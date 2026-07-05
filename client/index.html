@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Packet Hacker</title>
+  <link rel="stylesheet" href="/client/style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <button id="toggle-drawer" title="Show/hide puzzles" aria-label="Toggle puzzle list">☰</button>
+      <h1>Packet Hacker</h1>
+    </div>
+    <span id="connection" class="pill">disconnected</span>
+  </header>
+  <main>
+    <aside id="scenario-list" aria-label="Scenario list"></aside>
+    <section id="stage">
+      <div class="stage-head">
+        <h2 id="scenario-title">Select a puzzle</h2>
+        <span id="scenario-meta" class="pill"></span>
+      </div>
+      <p id="objective" class="objective"></p>
+
+      <div id="scene" class="scene" aria-label="Scenario view">
+        <canvas id="scene-canvas" width="720" height="360"></canvas>
+        <section id="combat-hud" class="combat-hud hidden" aria-label="Combat status">
+          <div class="hp-card player-hp">
+            <span>You</span>
+            <strong id="player-hp-text">100/100</strong>
+            <div class="hp-track"><div id="player-hp-bar" class="hp-fill"></div></div>
+          </div>
+          <div class="hp-card monster-hp" aria-hidden="true">
+            <span>Monster</span>
+            <strong id="monster-hp-text">120/120</strong>
+            <div class="hp-track"><div id="monster-hp-bar" class="hp-fill"></div></div>
+          </div>
+        </section>
+        <div id="scene-status" class="scene-status"></div>
+        <div id="death-overlay" class="death-overlay hidden" role="alert">
+          <strong>You died</strong>
+          <span id="death-text">The monster hit back.</span>
+          <button id="revive" type="button">Revive</button>
+        </div>
+      </div>
+
+      <div id="complete-popup" class="complete-popup hidden" role="status">
+        <div>
+          <strong id="complete-title">Challenge complete</strong>
+          <p id="complete-text">objective complete</p>
+        </div>
+        <button id="complete-close" type="button" class="ghost">Close</button>
+      </div>
+
+      <section class="inventory-panel" aria-label="Inventory">
+        <div class="inventory-head">
+          <h3>Inventory</h3>
+          <span id="inventory-count" class="pill"></span>
+        </div>
+        <div id="inventory" class="inventory-grid"></div>
+      </section>
+
+      <details class="panel" open>
+        <summary>Packets you can send</summary>
+        <pre id="packets"></pre>
+      </details>
+
+      <details class="panel">
+        <summary>Run result</summary>
+        <pre id="result"></pre>
+        <h3>Event log</h3>
+        <div id="events"></div>
+      </details>
+
+      <div id="lesson" class="lesson hidden">
+        <h3>Solved — what just happened</h3>
+        <p id="lesson-text"></p>
+      </div>
+    </section>
+  </main>
+  <section id="editor-panel">
+    <div class="toolbar">
+      <button id="run">Run ▷</button>
+      <button id="reset" class="ghost">Reset example</button>
+      <span id="selected-id" class="pill"></span>
+    </div>
+    <textarea id="script" spellcheck="false"></textarea>
+  </section>
+  <script src="/client/scene.js"></script>
+  <script src="/client/combat.js"></script>
+  <script src="/client/app.js"></script>
+</body>
+</html>
