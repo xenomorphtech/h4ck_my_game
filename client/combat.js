@@ -1,5 +1,11 @@
 // Generic lightweight combat scene state for click interactions and run-result feedback.
 // Kept separate from app.js/scene.js so future puzzle-specific death rules stay modular.
+//
+// Authority model: the server owns combat. Monster/player damage, death, and
+// retaliation are only reflected when the backend sends the matching Damage /
+// Death packets in a run result. The client never invents retaliation on a
+// timer; local click handling is a lightweight preview of the player's own
+// action only.
 
 const ARENA_COMBAT = {
   '01-first-blood-batch': {
@@ -7,16 +13,40 @@ const ARENA_COMBAT = {
     monsterMaxHp: 120,
     attackDamage: 40,
     retaliationDelayMs: 250,
-    retaliationDamage: 100,
     allowDeadFighting: false,
+    actionName: 'Attack',
+    targetField: 'target',
+    targetValue: 1,
+    monsterStatLabel: 'HP',
   },
   '02-arena-fight-while-dead': {
     playerMaxHp: 100,
     monsterMaxHp: 160,
     attackDamage: 40,
     retaliationDelayMs: 250,
-    retaliationDamage: 100,
     allowDeadFighting: true,
+    actionName: 'Attack',
+    targetField: 'target',
+    targetValue: 1,
+    monsterStatLabel: 'HP',
+  },
+  '16-cooldown-bypass-batch': {
+    playerMaxHp: 100,
+    monsterMaxHp: 1,
+    shieldMaxHp: 150,
+    attackDamage: 10,
+    attackCooldownMs: 750,
+    powerStrikeDamage: 50,
+    powerStrikeCooldownMs: 1000,
+    retaliationDelayMs: 500,
+    allowDeadFighting: false,
+    actionName: 'Attack',
+    targetField: 'target',
+    targetValue: 1,
+    monsterStatLabel: 'HP',
+    damageNoun: 'HP damage',
+    retaliator: 'boss',
+    monsterLabel: 'Boss',
   },
 };
 
@@ -26,7 +56,6 @@ class CombatController {
     this.dom = dom;
     this.scenario = null;
     this.config = null;
-    this.retaliationTimer = null;
     this.state = this.emptyState();
 
     this.dom.revive.onclick = () => this.revive();
@@ -39,6 +68,7 @@ class CombatController {
       active: false,
       playerHp: 0,
       monsterHp: 0,
+      shieldHp: null,
       dead: false,
       monsterDead: false,
       complete: false,
@@ -52,7 +82,6 @@ class CombatController {
   }
 
   reset() {
-    this.clearTimer();
     if (!this.config) {
       this.state = this.emptyState();
       this.renderer.setHiddenLabels([]);
@@ -67,6 +96,7 @@ class CombatController {
       active: true,
       playerHp: this.config.playerMaxHp,
       monsterHp: this.config.monsterMaxHp,
+      shieldHp: typeof this.config.shieldMaxHp === 'number' ? this.config.shieldMaxHp : null,
       dead: false,
       monsterDead: false,
       complete: false,
@@ -102,6 +132,13 @@ class CombatController {
     return true;
   }
 
+  packetForAction(action) {
+    if (!this.state.active || action.kind !== 'attack' || !this.config?.actionName) return null;
+    const field = this.config.targetField || 'target';
+    const target = this.config.targetValue ?? 1;
+    return `send ${this.config.actionName} { ${field}: ${target} }`;
+  }
+
   handleSceneAction(action) {
     if (!this.state.active) return false;
     if (action.kind === 'cooldown') {
@@ -110,61 +147,84 @@ class CombatController {
     }
     if (action.kind !== 'attack') return false;
 
-    this.state.monsterHp = Math.max(0, this.state.monsterHp - this.config.attackDamage);
-    if (this.state.monsterHp === 0) {
-      this.killMonster('challenge complete');
-      return true;
-    }
-
-    this.setStatus(`hit monster for ${this.config.attackDamage}; retaliation incoming`);
-    this.scheduleRetaliation();
+    this.setStatus(`attacking ${action.target || 'monster'}`);
     this.render();
     return true;
   }
 
+  // The run result carries the authoritative server combat log. Replay the
+  // server's Damage/Death packets in time order and mirror them into the HUD.
   applyRunResult(result) {
     if (!this.state.active || result.scenario_id !== this.scenario?.id) return;
-    this.clearTimer();
-    if (result.outcome === 'win') {
+
+    const server = (result.events || [])
+      .filter((event) => event.kind === 'server')
+      .slice()
+      .sort((a, b) => (a.t || 0) - (b.t || 0));
+
+    for (const event of server) {
+      if (event.name === 'Damage') this.applyServerDamage(event);
+      else if (event.name === 'Death') this.applyServerDeath(event);
+    }
+
+    if (result.outcome === 'win' && !this.state.monsterDead) {
       this.killMonster('challenge complete');
-      return;
     }
-    const attackedMonster = (result.events || []).some((event) => (
-      event.kind === 'client' && event.name === 'Attack' && Number(event.fields?.target) === 1
-    ));
-    if (attackedMonster) {
-      this.state.monsterHp = Math.max(1, this.config.monsterMaxHp - this.config.attackDamage);
-      this.die('monster retaliated before the objective completed');
+    this.render();
+  }
+
+  monsterTarget() {
+    return this.config.targetValue ?? 1;
+  }
+
+  applyServerDamage(event) {
+    const fields = event.fields || {};
+    const target = Number(fields.target);
+    const amount = Number(fields.amount) || 0;
+
+    if (target === this.monsterTarget()) {
+      if (typeof this.state.shieldHp === 'number' && this.state.shieldHp > 0) {
+        this.state.shieldHp = Math.max(0, this.state.shieldHp - amount);
+        this.setStatus(`shield absorbs ${amount}; SHIELD ${this.state.shieldHp}/${this.config.shieldMaxHp}`);
+      } else {
+        this.state.monsterHp = Math.max(0, this.state.monsterHp - amount);
+        const noun = this.config.damageNoun || 'damage';
+        this.setStatus(`server: ${amount} ${noun}; ${this.config.monsterStatLabel} ${this.state.monsterHp}/${this.config.monsterMaxHp}`);
+      }
     } else {
-      this.render();
+      this.state.playerHp = Math.max(0, this.state.playerHp - amount);
+      this.setStatus(`server: ${this.config.retaliator || 'monster'} hit you for ${amount}; HP ${this.state.playerHp}/${this.config.playerMaxHp}`);
     }
   }
 
-  scheduleRetaliation() {
-    this.clearTimer();
-    this.retaliationTimer = window.setTimeout(() => {
-      if (!this.state.active || this.state.monsterDead) return;
-      this.die('monster hit back with a fatal blow');
-    }, this.config.retaliationDelayMs);
+  applyServerDeath(event) {
+    const target = Number(event.fields?.target);
+    if (target === this.monsterTarget()) {
+      this.killMonster('challenge complete');
+    } else {
+      this.markPlayerDead(`${this.config.retaliator || 'monster'} retaliated with a fatal blow`);
+    }
   }
 
-  die(reason) {
-    this.state.playerHp = Math.max(0, this.state.playerHp - this.config.retaliationDamage);
-    this.state.dead = this.state.playerHp <= 0;
-    if (this.state.dead) {
+  markPlayerDead(reason) {
+    this.state.playerHp = 0;
+    this.state.dead = true;
+    // Do not hide the "monster dead" outcome: in arenas that accept ghost
+    // actions the player can still finish the monster after this point, and a
+    // later monster Death packet will flip the scene to complete.
+    if (!this.state.monsterDead) {
       this.dom.death.classList.remove('hidden');
       this.dom.deathText.textContent = `${reason}. Revive to restart the scene.`;
     }
-    this.setStatus(this.state.dead ? 'died' : `player HP ${this.state.playerHp}`);
+    this.setStatus('you died');
     this.render();
   }
 
   killMonster(message) {
-    this.clearTimer();
     this.state.monsterHp = 0;
     this.state.monsterDead = true;
     this.state.complete = true;
-    this.renderer.setHiddenLabels(['Monster']);
+    this.renderer.setHiddenLabels([this.config.monsterLabel || (this.config.monsterStatLabel === 'SHIELD' ? 'Boss' : 'Monster')]);
     this.dom.death.classList.add('hidden');
     this.showPopup(message);
     this.setStatus('objective complete');
@@ -175,15 +235,20 @@ class CombatController {
     if (!this.state.active) return;
     this.dom.playerHp.textContent = `${this.state.playerHp}/${this.config.playerMaxHp}`;
     this.dom.monsterHp.textContent = `${this.state.monsterHp}/${this.config.monsterMaxHp}`;
-    this.dom.playerBar.style.width = `${(this.state.playerHp / this.config.playerMaxHp) * 100}%`;
-    this.dom.monsterBar.style.width = `${(this.state.monsterHp / this.config.monsterMaxHp) * 100}%`;
+    this.dom.playerBar.style.width = `${Math.max(0, (this.state.playerHp / this.config.playerMaxHp) * 100)}%`;
+    this.dom.monsterBar.style.width = `${Math.max(0, (this.state.monsterHp / this.config.monsterMaxHp) * 100)}%`;
     this.dom.hud.classList.toggle('dead', this.state.dead);
     this.dom.hud.classList.toggle('complete', this.state.complete);
     this.renderer.setCombatState({
       active: this.state.active,
+      hp: this.state.monsterHp,
+      maxHp: this.config.monsterMaxHp,
+      shieldHp: this.state.shieldHp,
+      maxShield: this.config.shieldMaxHp,
       monsterHp: this.state.monsterHp,
       monsterMaxHp: this.config.monsterMaxHp,
       monsterDead: this.state.monsterDead,
+      statLabel: this.config.monsterStatLabel || 'HP',
     });
   }
 
@@ -195,11 +260,6 @@ class CombatController {
 
   hidePopup() {
     this.dom.popup.classList.add('hidden');
-  }
-
-  clearTimer() {
-    if (this.retaliationTimer) window.clearTimeout(this.retaliationTimer);
-    this.retaliationTimer = null;
   }
 
   setStatus(text) {

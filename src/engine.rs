@@ -42,6 +42,11 @@ pub fn run_script(scenario_id: &str, script: &str) -> RunResult {
         })
         .collect();
 
+    // Authoritative server-side notifications the world emits in response to the
+    // player's packets (listing removed, mail created, ...). The client renders
+    // these to update the market/mail UI instead of mutating state locally.
+    events.extend(scenario.notifications(&program.events));
+
     if won {
         events.push(PacketEvent {
             t: program.max_time,

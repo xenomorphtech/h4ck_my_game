@@ -4,10 +4,16 @@ let socket = null;
 let renderer = null;
 let combat = null;
 let completed = new Set();
+// Client-side mirrors of the server's authoritative market/mail state. They are
+// only ever refreshed from the scenario payload or from server notification
+// events in a run result -- never mutated speculatively by a click handler.
+let liveMarket = null;
+let liveMail = null;
 
 const $ = (id) => document.getElementById(id);
 
 async function loadScenarios() {
+  initConsoleTabs();
   renderer = new window.SceneRenderer($('scene-canvas'));
   combat = new window.CombatController(renderer, {
     hud: $('combat-hud'),
@@ -25,6 +31,13 @@ async function loadScenarios() {
     status: $('scene-status'),
   });
   renderer.onAction = (action) => {
+    // Clicking a monster plays like a normal game: it sends the real attack
+    // packet to the server. The server's run result drives combat feedback.
+    const combatPacket = combat.packetForAction(action);
+    if (combatPacket) {
+      sendPacketScript(combatPacket);
+      return;
+    }
     if (combat.handleSceneAction(action)) return;
     if (action.kind === 'move') {
       $('scene-status').textContent = `moving to ${action.x}, ${action.y}`;
@@ -91,7 +104,183 @@ function selectScenario(scenario) {
   $('scene-status').textContent = `Loaded ${scenario.title}`;
   renderer.setScene(scenario.scene);
   combat.setScenario(scenario);
+  renderSystemViews(scenario);
   renderInventory(scenario.inventory || []);
+  activateConsoleTab('script-tab');
+}
+
+function renderSystemViews(scenario) {
+  renderMarket(scenario.market || null);
+  renderMail(scenario.mail || null);
+  renderSkills(scenario.skills || null);
+}
+
+function iconNode(sprite, label) {
+  const iconWrap = document.createElement('div');
+  iconWrap.className = 'inventory-icon';
+  const url = window.gameIconUrl ? window.gameIconUrl(sprite) : null;
+  if (url) {
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = '';
+    img.loading = 'lazy';
+    img.onerror = () => {
+      img.remove();
+      iconWrap.textContent = label.slice(0, 2).toUpperCase();
+    };
+    iconWrap.appendChild(img);
+  } else {
+    iconWrap.textContent = label.slice(0, 2).toUpperCase();
+  }
+  return iconWrap;
+}
+
+function renderMarket(market) {
+  const panel = $('market-panel');
+  const root = $('market-listings');
+  root.innerHTML = '';
+  liveMarket = market ? JSON.parse(JSON.stringify(market)) : null;
+  panel.classList.toggle('hidden', !market);
+  if (!market) {
+    $('market-gold').textContent = '';
+    return;
+  }
+
+  const listings = market.listings || [];
+  $('market-gold').textContent = `${market.gold} gold · ${listings.length} listing${listings.length === 1 ? '' : 's'}`;
+  if (!listings.length) {
+    const empty = document.createElement('div');
+    empty.className = 'inventory-empty';
+    empty.textContent = 'No visible market listings.';
+    root.appendChild(empty);
+    return;
+  }
+
+  for (const listing of listings) {
+    const card = document.createElement('article');
+    card.className = `listing-card market-card status-${listing.status || 'active'}`;
+    const text = document.createElement('div');
+    text.className = 'listing-text';
+    const title = document.createElement('strong');
+    title.textContent = listing.item;
+    const meta = document.createElement('small');
+    const status = listing.status ? `${listing.status} · ` : '';
+    meta.textContent = `listing #${listing.id} · ${status}stock ${listing.stock} · ${listing.note}`;
+    text.append(title, meta);
+
+    if (listing.cancel_packet) {
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'listing-cancel';
+      cancel.textContent = 'Cancel listing';
+      // Showcase the packet through gameplay: send it to the server and let the
+      // server-side notifications (ListingRemoved / MailCreated) update the UI.
+      cancel.onclick = () => sendPacketScript(`send ${listing.cancel_packet}`);
+      text.appendChild(cancel);
+    }
+
+    const price = document.createElement('span');
+    price.className = 'listing-price';
+    price.textContent = `${listing.price}g`;
+
+    card.append(iconNode(listing.sprite, listing.item), text, price);
+    root.appendChild(card);
+  }
+}
+
+// Add a packet line to the script editor so market/mail buttons drive the same
+// scripted flow the player runs manually, rather than acting as a separate path.
+function appendScriptLine(line) {
+  const editor = $('script');
+  const current = editor.value.replace(/\s*$/, '');
+  editor.value = current ? `${current}\n${line}\n` : `${line}\n`;
+  editor.focus();
+  editor.scrollTop = editor.scrollHeight;
+  $('scene-status').textContent = `added: ${line}`;
+}
+
+function renderMail(mail) {
+  const panel = $('mail-panel');
+  const root = $('mail-messages');
+  root.innerHTML = '';
+  liveMail = mail ? JSON.parse(JSON.stringify(mail)) : null;
+  panel.classList.toggle('hidden', !mail);
+  if (!mail) {
+    $('mail-count').textContent = '';
+    return;
+  }
+
+  const messages = mail.messages || [];
+  $('mail-count').textContent = `${messages.length} message${messages.length === 1 ? '' : 's'}`;
+  if (!messages.length) {
+    const empty = document.createElement('div');
+    empty.className = 'inventory-empty';
+    empty.textContent = 'No visible mail.';
+    root.appendChild(empty);
+    return;
+  }
+
+  for (const message of messages) {
+    const card = document.createElement('article');
+    card.className = 'listing-card mail-card';
+    const text = document.createElement('div');
+    text.className = 'listing-text';
+    const title = document.createElement('strong');
+    title.textContent = message.subject;
+    const meta = document.createElement('small');
+    meta.textContent = `mail #${message.id} · ${message.status}`;
+    text.append(title, meta);
+
+    const attachment = document.createElement('span');
+    attachment.className = 'listing-price';
+    attachment.textContent = message.attachment;
+
+    card.append(iconNode(message.sprite, message.subject), text, attachment);
+    root.appendChild(card);
+  }
+}
+
+function renderSkills(skills) {
+  const panel = $('skill-panel');
+  const root = $('skills');
+  root.innerHTML = '';
+  panel.classList.toggle('hidden', !skills);
+  if (!skills) {
+    $('skill-count').textContent = '';
+    return;
+  }
+
+  const actions = skills.actions || [];
+  $('skill-count').textContent = `${actions.length} skill${actions.length === 1 ? '' : 's'}`;
+  if (!actions.length) {
+    const empty = document.createElement('div');
+    empty.className = 'inventory-empty';
+    empty.textContent = 'No visible skills.';
+    root.appendChild(empty);
+    return;
+  }
+
+  for (const skill of actions) {
+    const card = document.createElement('article');
+    card.className = 'skill-card';
+
+    const text = document.createElement('div');
+    text.className = 'skill-text';
+    const title = document.createElement('strong');
+    title.textContent = skill.name;
+    const description = document.createElement('small');
+    description.textContent = skill.description;
+    text.append(title, description);
+
+    const cast = document.createElement('button');
+    cast.type = 'button';
+    cast.className = 'skill-cast';
+    cast.textContent = 'Cast';
+    cast.onclick = () => appendScriptLine(`send ${skill.cast_packet}`);
+
+    card.append(iconNode(skill.sprite, skill.name), text, cast);
+    root.appendChild(card);
+  }
 }
 
 function renderInventory(items) {
@@ -111,22 +300,7 @@ function renderInventory(items) {
     const slot = document.createElement('article');
     slot.className = `inventory-slot ${item.quantity <= 0 ? 'empty-slot' : ''}`;
 
-    const iconWrap = document.createElement('div');
-    iconWrap.className = 'inventory-icon';
-    const url = window.gameIconUrl ? window.gameIconUrl(item.sprite) : null;
-    if (url) {
-      const img = document.createElement('img');
-      img.src = url;
-      img.alt = '';
-      img.loading = 'lazy';
-      img.onerror = () => {
-        img.remove();
-        iconWrap.textContent = item.name.slice(0, 2).toUpperCase();
-      };
-      iconWrap.appendChild(img);
-    } else {
-      iconWrap.textContent = item.name.slice(0, 2).toUpperCase();
-    }
+    const iconWrap = iconNode(item.sprite, item.name);
 
     const text = document.createElement('div');
     text.className = 'inventory-text';
@@ -145,6 +319,26 @@ function renderInventory(items) {
   }
 }
 
+function initConsoleTabs() {
+  const tabs = Array.from(document.querySelectorAll('.console-tab'));
+  tabs.forEach((tab) => {
+    tab.onclick = () => activateConsoleTab(tab.dataset.tab);
+  });
+}
+
+function activateConsoleTab(name) {
+  document.querySelectorAll('.console-tab').forEach((tab) => {
+    const active = tab.dataset.tab === name;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  document.querySelectorAll('.console-pane').forEach((pane) => {
+    const active = pane.dataset.pane === name;
+    pane.classList.toggle('active', active);
+    pane.hidden = !active;
+  });
+}
+
 function ensureSocket() {
   if (socket && socket.readyState <= WebSocket.OPEN) return socket;
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -158,12 +352,21 @@ function ensureSocket() {
 
 function runSelected() {
   if (!selected) return;
-  $('scene-status').textContent = 'running packets…';
+  sendScript($('script').value, 'running packets…');
+}
+
+function sendPacketScript(line) {
+  sendScript(`${line}\n`, `sent packet: ${line}`);
+}
+
+function sendScript(script, statusText) {
+  if (!selected) return;
+  $('scene-status').textContent = statusText;
   const ws = ensureSocket();
   const send = () => ws.send(JSON.stringify({
     type: 'run_script',
     scenario_id: selected.id,
-    script: $('script').value,
+    script,
   }));
   if (ws.readyState === WebSocket.OPEN) send();
   else ws.addEventListener('open', send, { once: true });
@@ -200,8 +403,11 @@ function renderResult(result) {
     events.appendChild(div);
   }
 
+  applyServerNotifications(result.events || []);
   renderer.playEvents(result.events || [], result.outcome);
   combat.applyRunResult(result);
+
+  activateConsoleTab('result-tab');
 
   if (result.outcome === 'win' && result.state && result.state.lesson) {
     $('lesson-text').textContent = result.state.lesson;
@@ -210,6 +416,38 @@ function renderResult(result) {
     $('lesson').classList.add('hidden');
     $('lesson-text').textContent = '';
   }
+}
+
+function applyServerNotifications(events) {
+  let marketChanged = false;
+  let mailChanged = false;
+
+  for (const packet of events) {
+    if (packet.kind !== 'server') continue;
+    const fields = packet.fields || {};
+    if (packet.name === 'ListingRemoved' && liveMarket) {
+      const listingId = Number(fields.listing);
+      liveMarket.listings = (liveMarket.listings || []).filter((listing) => Number(listing.id) !== listingId);
+      marketChanged = true;
+    } else if (packet.name === 'MailCreated' && liveMail) {
+      const mailId = Number(fields.mail);
+      const messages = liveMail.messages || [];
+      if (!messages.some((message) => Number(message.id) === mailId)) {
+        messages.push({
+          id: mailId,
+          subject: fields.subject || 'Listing cancelled',
+          attachment: fields.attachment || 'Returned item',
+          sprite: fields.sprite || 'mailbox',
+          status: fields.status || 'unread',
+        });
+      }
+      liveMail.messages = messages;
+      mailChanged = true;
+    }
+  }
+
+  if (marketChanged) renderMarket(liveMarket);
+  if (mailChanged) renderMail(liveMail);
 }
 
 function resetExample() {
@@ -221,6 +459,7 @@ function resetExample() {
   $('scene-status').textContent = `Reset to ${selected.title} example`;
   renderer.setScene(selected.scene);
   combat.reset();
+  renderSystemViews(selected);
   renderInventory(selected.inventory || []);
 }
 

@@ -8,26 +8,12 @@ pub struct ScenarioImpl;
 
 pub static SCENARIO: ScenarioImpl = ScenarioImpl;
 
-const ENTITIES: &[SceneEntity] = &[
-    SceneEntity {
-        sprite: "hero",
-        x: 1,
-        y: 3,
-        label: "You",
-    },
-    SceneEntity {
-        sprite: "mailbox",
-        x: 4,
-        y: 3,
-        label: "Mailbox",
-    },
-    SceneEntity {
-        sprite: "mailbox",
-        x: 5,
-        y: 2,
-        label: "Draft slot #1",
-    },
-];
+const ENTITIES: &[SceneEntity] = &[SceneEntity {
+    sprite: "hero",
+    x: 1,
+    y: 3,
+    label: "You",
+}];
 const BLOCKED_TILES: &[BlockedTile] = &[];
 
 impl Scenario for ScenarioImpl {

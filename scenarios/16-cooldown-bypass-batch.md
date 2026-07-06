@@ -6,17 +6,19 @@ Difficulty: ★★☆
 
 ## Objective
 
-Break the boss shield.
+Break the boss shield and finish the 1 HP boss before it retaliates. Shield: 150. PowerStrike: 50 shield damage, 1000ms cooldown. Attack: 10 HP damage, 750ms cooldown. Retaliation: 500ms.
 
 ## Player-facing setup
 
-`PowerStrike` deals 50 shield damage but has a 1 second cooldown. The boss
-shield has 150 HP. Normal play cannot fit three casts before enrage.
+`PowerStrike` deals 50 shield damage and has a 1000ms cooldown. `Attack`
+deals 10 HP damage and has a 750ms cooldown. The boss has 1 HP behind a
+150 durability shield and retaliates after 500ms.
 
 ## Packet schemas
 
 ```
 C->S CastSkill { skill: Int, target: Int }
+C->S Attack { target: Int }
 S->C SkillResult { skill: Int, target: Int, amount: Int }
 S->C CooldownStarted { skill: Int, ready_at_ms: Int }
 S->C ShieldBroken { target: Int }
@@ -26,8 +28,9 @@ S->C ShieldBroken { target: Int }
 
 ```
 player { id: 0, cooldowns: {} }
-boss { id: 1, shield_hp: 150, enrage_at_ms: 100 }
-PowerStrike { skill: 10, damage: 50, cooldown_ms: 1000 }
+boss { id: 1, hp: 1, shield_hp: 150, enrage_at_ms: 500 }
+Attack { damage: 10, cooldown_ms: 750 }
+PowerStrike { skill: 10, shield_damage: 50, cooldown_ms: 1000 }
 ```
 
 ## Server rule / hidden bug
@@ -43,10 +46,12 @@ batch {
     send CastSkill { skill: 10, target: 1 }
     send CastSkill { skill: 10, target: 1 }
     send CastSkill { skill: 10, target: 1 }
+    send Attack { target: 1 }
 }
 ```
 
-All three hits land before the cooldown state is committed.
+All three PowerStrikes and the finishing Attack land in the same frame,
+before the cooldown state is committed and before the boss retaliates.
 
 ## Naive failure
 
@@ -56,7 +61,8 @@ sleep 1000
 send CastSkill { skill: 10, target: 1 }
 ```
 
-The boss enrages at t=100ms before the second cast.
+The boss retaliates at t=500ms before the second cast, and the shield is
+never fully broken.
 
 ## Defensive note
 

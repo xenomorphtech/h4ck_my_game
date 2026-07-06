@@ -53,6 +53,32 @@
         <button id="complete-close" type="button" class="ghost">Close</button>
       </div>
 
+      <div id="system-views" class="system-views">
+        <section id="market-panel" class="system-panel hidden" aria-label="Market">
+          <div class="system-head">
+            <h3>Market</h3>
+            <span id="market-gold" class="pill"></span>
+          </div>
+          <div id="market-listings" class="listing-grid"></div>
+        </section>
+
+        <section id="mail-panel" class="system-panel hidden" aria-label="Mail">
+          <div class="system-head">
+            <h3>Mail</h3>
+            <span id="mail-count" class="pill"></span>
+          </div>
+          <div id="mail-messages" class="listing-grid"></div>
+        </section>
+
+        <section id="skill-panel" class="system-panel hidden" aria-label="Skills">
+          <div class="system-head">
+            <h3>Skills</h3>
+            <span id="skill-count" class="pill"></span>
+          </div>
+          <div id="skills" class="skill-list"></div>
+        </section>
+      </div>
+
       <section class="inventory-panel" aria-label="Inventory">
         <div class="inventory-head">
           <h3>Inventory</h3>
@@ -61,31 +87,36 @@
         <div id="inventory" class="inventory-grid"></div>
       </section>
 
-      <details class="panel" open>
-        <summary>Packets you can send</summary>
-        <pre id="packets"></pre>
-      </details>
-
-      <details class="panel">
-        <summary>Run result</summary>
-        <pre id="result"></pre>
-        <h3>Event log</h3>
-        <div id="events"></div>
-      </details>
-
       <div id="lesson" class="lesson hidden">
         <h3>Solved — what just happened</h3>
         <p id="lesson-text"></p>
       </div>
     </section>
   </main>
-  <section id="editor-panel">
-    <div class="toolbar">
-      <button id="run">Run ▷</button>
-      <button id="reset" class="ghost">Reset example</button>
+  <section id="editor-panel" aria-label="Packet console">
+    <div class="console-tabs" role="tablist" aria-label="Packet console tabs">
+      <button class="console-tab active" type="button" role="tab" aria-selected="true" aria-controls="tab-script" data-tab="script-tab">Script</button>
+      <button class="console-tab" type="button" role="tab" aria-selected="false" aria-controls="tab-packets" data-tab="packets-tab">Packets</button>
+      <button class="console-tab" type="button" role="tab" aria-selected="false" aria-controls="tab-result" data-tab="result-tab">Run result</button>
+      <button class="console-tab" type="button" role="tab" aria-selected="false" aria-controls="tab-events" data-tab="events-tab">Event log</button>
       <span id="selected-id" class="pill"></span>
     </div>
-    <textarea id="script" spellcheck="false"></textarea>
+    <div id="tab-script" class="console-pane active" role="tabpanel" data-pane="script-tab">
+      <div class="toolbar">
+        <button id="run">Run ▷</button>
+        <button id="reset" class="ghost">Reset example</button>
+      </div>
+      <textarea id="script" spellcheck="false"></textarea>
+    </div>
+    <div id="tab-packets" class="console-pane" role="tabpanel" data-pane="packets-tab" hidden>
+      <pre id="packets"></pre>
+    </div>
+    <div id="tab-result" class="console-pane" role="tabpanel" data-pane="result-tab" hidden>
+      <pre id="result"></pre>
+    </div>
+    <div id="tab-events" class="console-pane" role="tabpanel" data-pane="events-tab" hidden>
+      <div id="events"></div>
+    </div>
   </section>
   <script src="/client/scene.js"></script>
   <script src="/client/combat.js"></script>

@@ -16,12 +16,6 @@ const ENTITIES: &[SceneEntity] = &[
         label: "You",
     },
     SceneEntity {
-        sprite: "auction",
-        x: 4,
-        y: 2,
-        label: "Listing #21",
-    },
-    SceneEntity {
         sprite: "gem",
         x: 5,
         y: 2,

@@ -13,8 +13,21 @@ const ICON_NAMES = new Set([
   'shrine', 'trade_table', 'wall', 'wand'
 ]);
 
-// Enemies aggro and retaliate when attacked.
+// Enemy entities can be attacked. `type`/`traits` are provided by the backend
+// entity trait; sprite fallback keeps old/static payloads usable.
 const ENEMY_SPRITES = new Set(['monster', 'boss', 'guard']);
+
+function entityTraits(entity) {
+  return new Set(Array.isArray(entity?.traits) ? entity.traits : []);
+}
+
+function hasEntityTrait(entity, trait) {
+  return entityTraits(entity).has(trait);
+}
+
+function isMonsterEntity(entity) {
+  return entity?.type === 'monster' || hasEntityTrait(entity, 'monster') || ENEMY_SPRITES.has(entity?.sprite);
+}
 
 function iconUrl(sprite) {
   return ICON_NAMES.has(sprite) ? `/client/icons/${sprite}.svg` : null;
@@ -254,13 +267,13 @@ function drawEntity(ctx, entity, px, py, pulse, aggro) {
   ctx.fillText(entity.label, cx, cy + 28);
 }
 
-function drawHpBadge(ctx, label, hp, maxHp, px, py) {
+function drawHpBadge(ctx, label, hp, maxHp, px, py, topOffset = 64) {
   const safeMax = Math.max(1, maxHp || 1);
   const ratio = Math.max(0, Math.min(1, hp / safeMax));
   const w = 82;
   const h = 18;
   const x = px - w / 2;
-  const y = py - 64;
+  const y = py - topOffset;
 
   ctx.save();
   roundRect(ctx, x, y, w, h, 7);
@@ -283,6 +296,65 @@ function drawHpBadge(ctx, label, hp, maxHp, px, py) {
   ctx.fillStyle = '#fee2e2';
   ctx.fillText(`${label} ${hp}/${safeMax}`, px, y + 6);
   ctx.restore();
+}
+
+// A small "SHIELD" chip drawn above the HP bar for shielded entities.
+function drawShieldBadge(ctx, px, py, topOffset) {
+  const w = 62;
+  const h = 15;
+  const x = px - w / 2;
+  const y = py - topOffset;
+
+  ctx.save();
+  roundRect(ctx, x, y, w, h, 6);
+  ctx.fillStyle = 'rgba(7, 11, 18, 0.86)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(147, 197, 253, 0.85)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.font = '9px ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#dbeafe';
+  ctx.fillText('◆ SHIELD', px, y + h / 2);
+  ctx.restore();
+}
+
+// Draw HP/shield overlays for any monster-type entity, on any map. When the
+// active combat controller is tracking this monster, its live HP/shield is used;
+// otherwise the entity's own scene metadata (parsed HP/shield flag) is shown.
+function drawEntityTraitBadges(ctx, entity, px, py, combatState) {
+  if (!isMonsterEntity(entity)) return;
+
+  const liveCombat = combatState?.active && !combatState.monsterDead;
+  const shielded = entity.type === 'monster'
+    ? (entity.shield === true || hasEntityTrait(entity, 'shield'))
+    : hasEntityTrait(entity, 'shield');
+
+  const statLabel = liveCombat ? (combatState.statLabel || 'HP') : null;
+  const hp = liveCombat
+    ? (typeof combatState.hp === 'number' ? combatState.hp : combatState.monsterHp)
+    : entity.hp;
+  const maxHp = liveCombat
+    ? (typeof combatState.maxHp === 'number' ? combatState.maxHp : combatState.monsterMaxHp)
+    : (entity.max_hp ?? entity.hp);
+  const shieldHp = liveCombat
+    ? combatState.shieldHp
+    : entity.shield_hp;
+  const maxShield = liveCombat
+    ? combatState.maxShield
+    : (entity.max_shield ?? entity.shield_hp);
+
+  if (typeof shieldHp === 'number') {
+    drawHpBadge(ctx, 'SHIELD', shieldHp, maxShield, px, py, 82);
+    if (typeof hp === 'number') drawHpBadge(ctx, 'HP', hp, maxHp, px, py, 64);
+  } else if (typeof hp === 'number') {
+    drawHpBadge(ctx, statLabel || 'HP', hp, maxHp, px, py, 64);
+    if (shielded) drawShieldBadge(ctx, px, py, 82);
+  } else if (shielded) {
+    drawShieldBadge(ctx, px, py, 64);
+  }
 }
 
 class SceneRenderer {
@@ -383,7 +455,7 @@ class SceneRenderer {
   handleClick(ev) {
     const { px, py } = this.eventToCanvas(ev);
     const target = this.entityAt(px, py);
-    if (target && ENEMY_SPRITES.has(target.sprite)) {
+    if (target && isMonsterEntity(target)) {
       this.attack(target);
     } else if (target && target.sprite === 'hero') {
       // clicking yourself does nothing
@@ -439,15 +511,29 @@ class SceneRenderer {
       return;
     }
     this.nextAttackAt = now + this.attackCooldownMs;
-    const heroPos = this.heroPos || { x: 1, y: 3 };
-    const from = iso(heroPos.x, heroPos.y);
-    const to = iso(enemy.x, enemy.y);
-    // player's strike travels to the enemy...
-    this.strikes.push({ at: now, from, to, color: '#65a9ff' });
-    // ...and the enemy retaliates ~250ms later (the fatal window).
-    this.strikes.push({ at: now + 250, from: to, to: from, color: '#f97066' });
     this.aggro.add(enemy.label);
     if (this.onAction) this.onAction({ kind: 'attack', target: enemy.label });
+    this.start();
+  }
+
+  // Draw a combat strike from an authoritative server Damage packet. The server
+  // decides who hit whom; the client only animates what the packet reports. This
+  // is the single source of the red/blue melee darts — the client never invents
+  // a strike speculatively on click.
+  addServerCombatStrike(sourceId, targetId) {
+    const byId = (id) => this.visibleEntities().find((e) => {
+      if (id === 0) return e.sprite === 'hero';
+      return isMonsterEntity(e);
+    });
+    const source = byId(sourceId);
+    const target = byId(targetId);
+    if (!source || !target) return;
+    const from = iso(this.entityPos(source).x, this.entityPos(source).y);
+    const to = iso(this.entityPos(target).x, this.entityPos(target).y);
+    // Player strikes are blue; incoming monster counterattacks are red.
+    const color = sourceId === 0 ? '#65a9ff' : '#f97066';
+    this.strikes.push({ at: performance.now(), from, to, color });
+    if (target.label) this.aggro.add(target.label);
     this.start();
   }
 
@@ -456,6 +542,9 @@ class SceneRenderer {
     const now = performance.now();
     (events || []).forEach((ev, i) => {
       this.flashes.push({ at: now + i * 70, kind: ev.kind, name: ev.name });
+      if (ev.kind === 'server' && ev.name === 'Damage') {
+        this.addServerCombatStrike(Number(ev.fields?.source), Number(ev.fields?.target));
+      }
     });
     this.outcome = outcome;
     this.start();
@@ -494,12 +583,9 @@ class SceneRenderer {
       drawEntity(ctx, e, px, py, ts, this.aggro.has(e.label));
     }
 
-    if (this.combatState?.active && !this.combatState.monsterDead) {
-      for (const { e, pos } of ordered) {
-        if (!ENEMY_SPRITES.has(e.sprite)) continue;
-        const { px, py } = iso(pos.x, pos.y);
-        drawHpBadge(ctx, 'HP', this.combatState.monsterHp, this.combatState.monsterMaxHp, px, py);
-      }
+    for (const { e, pos } of ordered) {
+      const { px, py } = iso(pos.x, pos.y);
+      drawEntityTraitBadges(ctx, e, px, py, this.combatState);
     }
 
     // Draw blocked tiles as a top overlay so unwalkable squares remain visible
@@ -508,7 +594,7 @@ class SceneRenderer {
       drawBlockedTile(ctx, tile, ts);
     }
 
-    // melee strikes (click-to-attack + retaliation)
+    // melee strikes (click-to-attack preview + server combat packets)
     let strikeActive = false;
     for (const s of this.strikes) {
       const age = ts - s.at;

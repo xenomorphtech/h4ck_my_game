@@ -128,27 +128,42 @@ button.ghost, #toggle-drawer {
   padding: 5px 10px;
   backdrop-filter: blur(4px);
 }
-.inventory-panel {
+.inventory-panel, .system-panel {
   background: #0b1020;
   border: 1px solid #1f2937;
   border-radius: 10px;
   padding: 10px;
   margin: 10px 0;
 }
-.inventory-head {
+.system-views {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+.system-panel {
+  margin: 0;
+}
+.inventory-head, .system-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
   margin-bottom: 8px;
 }
-.inventory-head h3 { margin: 0; color: #bfdbfe; }
-.inventory-grid {
+.inventory-head h3, .system-head h3 { margin: 0; color: #bfdbfe; }
+.inventory-grid, .listing-grid, .skill-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 8px;
 }
-.inventory-slot {
+.listing-grid {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+.skill-list {
+  grid-template-columns: 1fr;
+}
+.inventory-slot, .listing-card, .skill-card {
   display: grid;
   grid-template-columns: 44px 1fr auto;
   align-items: center;
@@ -178,24 +193,67 @@ button.ghost, #toggle-drawer {
   filter: brightness(0) invert(1) drop-shadow(0 0 5px rgba(101,169,255,.25));
 }
 .inventory-slot.empty-slot .inventory-icon img { opacity: 0.5; }
-.inventory-text { min-width: 0; }
-.inventory-text strong {
+.inventory-text, .listing-text { min-width: 0; }
+.inventory-text strong, .listing-text strong {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.inventory-text small {
+.inventory-text small, .listing-text small {
   display: block;
   color: #94a3b8;
   margin-top: 3px;
 }
-.inventory-qty {
+.inventory-qty, .listing-price {
   color: #e5e7eb;
   background: #172033;
   border: 1px solid #27364a;
   border-radius: 999px;
   padding: 2px 7px;
+  white-space: nowrap;
+}
+.market-card {
+  border-color: rgba(245, 158, 11, 0.42);
+  background: linear-gradient(180deg, rgba(120, 53, 15, 0.26), #0b1020);
+}
+.market-card.status-sold {
+  opacity: 0.75;
+  border-color: rgba(148, 163, 184, 0.38);
+}
+.listing-cancel {
+  width: max-content;
+  margin-top: 7px;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: #92400e;
+  border: 1px solid #f59e0b;
+}
+.mail-card {
+  border-color: rgba(96, 165, 250, 0.42);
+  background: linear-gradient(180deg, rgba(30, 64, 175, 0.22), #0b1020);
+}
+.skill-card {
+  border-color: rgba(129, 140, 248, 0.48);
+  background: linear-gradient(180deg, rgba(49, 46, 129, 0.28), #0b1020);
+}
+.skill-text { min-width: 0; }
+.skill-text strong {
+  display: block;
+  color: #e0e7ff;
+}
+.skill-text small {
+  display: block;
+  color: #a5b4fc;
+  margin-top: 3px;
+  white-space: normal;
+}
+.skill-cast {
+  width: max-content;
+  padding: 5px 10px;
+  font-size: 12px;
+  background: #3730a3;
+  border: 1px solid #818cf8;
 }
 .inventory-empty {
   color: #94a3b8;
@@ -241,15 +299,47 @@ pre, #events {
   border-top: 1px solid #253142;
   background: #0b1020;
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 220px;
   overflow: hidden;
 }
+.console-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid #1f2937;
+  overflow-x: auto;
+}
+.console-tabs #selected-id { margin-left: auto; }
+.console-tab {
+  background: #111827;
+  border: 1px solid #27364a;
+  color: #cbd5e1;
+  border-radius: 999px;
+  padding: 6px 11px;
+  white-space: nowrap;
+}
+.console-tab.active {
+  background: #18375d;
+  border-color: #65a9ff;
+  color: #e0f2fe;
+}
+.console-pane {
+  min-height: 0;
+  overflow: hidden;
+}
+.console-pane.active { display: block; }
+#tab-script.console-pane.active {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.console-pane[hidden] { display: none; }
 .toolbar { padding: 8px; display: flex; gap: 12px; align-items: center; }
 textarea {
   width: 100%;
   height: 100%;
-  min-height: 160px;
+  min-height: 0;
   resize: none;
   background: #070b12;
   color: #d7e1ee;
@@ -258,6 +348,13 @@ textarea {
   padding: 12px;
   font: inherit;
   outline: none;
+}
+.console-pane > pre,
+.console-pane > #events {
+  margin: 0;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
 }
 .combat-hud {
   position: absolute;

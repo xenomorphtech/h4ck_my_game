@@ -151,7 +151,79 @@ fn all_documented_naive_scripts_do_not_win() {
 }
 
 #[test]
-fn arena_two_requires_a_pre_death_hit_then_a_burst_after_death() {
+fn market_three_cancel_refund_is_not_tied_to_a_magic_timestamp() {
+    let scenario_id = "07-auction-cancel-refund-dupe";
+
+    let manual_cancel_then_claim = run_script(
+        scenario_id,
+        "send CancelListing { listing: 32 }\nsend ClaimMailbox { mail: 1 }\nsend ClaimMailbox { mail: 2 }\n",
+    );
+    assert_eq!(
+        manual_cancel_then_claim.outcome,
+        Outcome::Win,
+        "canceling the sold sword listing and claiming both resulting rewards should not require an exact timestamp"
+    );
+
+    let delayed_cancel_then_claim = run_script(
+        scenario_id,
+        "sleep 125\nsend CancelListing { listing: 32 }\nsleep 75\nsend ClaimMailbox { mail: 1 }\nsend ClaimMailbox { mail: 2 }\n",
+    );
+    assert_eq!(
+        delayed_cancel_then_claim.outcome,
+        Outcome::Win,
+        "manual action timing should not be the win condition"
+    );
+
+    let cancel_visible_non_objective_listing = run_script(
+        scenario_id,
+        "send CancelListing { listing: 31 }\nsend ClaimMailbox { mail: 1 }\nsend ClaimMailbox { mail: 2 }\n",
+    );
+    assert_ne!(
+        cancel_visible_non_objective_listing.outcome,
+        Outcome::Win,
+        "the visible UI-cancelable listing is not the objective sword and must not solve the puzzle"
+    );
+
+    let claim_return_without_cancel = run_script(
+        scenario_id,
+        "send ClaimMailbox { mail: 1 }\nsend ClaimMailbox { mail: 2 }\n",
+    );
+    assert_ne!(
+        claim_return_without_cancel.outcome,
+        Outcome::Win,
+        "mail #2 is created by the cancel path and must not be claimable by itself"
+    );
+
+    let claim_return_before_cancel = run_script(
+        scenario_id,
+        "send ClaimMailbox { mail: 2 }\nsend CancelListing { listing: 31 }\nsend ClaimMailbox { mail: 1 }\n",
+    );
+    assert_ne!(
+        claim_return_before_cancel.outcome,
+        Outcome::Win,
+        "mail #2 cannot be claimed before the cancel action creates it"
+    );
+}
+
+#[test]
+fn market_and_mail_state_is_not_duplicated_as_canvas_units() {
+    // The market/mail panels now own auction and mailbox state, so those props
+    // must not also be rendered as scene "units" on the map.
+    for scenario in all_scenarios() {
+        let scene = scenario.scene();
+        for entity in scene.entities {
+            assert!(
+                entity.sprite != "auction" && entity.sprite != "mailbox",
+                "{} renders {:?} as a canvas unit; auction/mailbox state belongs in the market/mail panels",
+                scenario.id(),
+                entity.sprite
+            );
+        }
+    }
+}
+
+#[test]
+fn arena_two_win_condition_is_monster_dead_not_batch_shape() {
     let scenario = all_scenarios()
         .iter()
         .find(|scenario| scenario.id() == "02-arena-fight-while-dead")
@@ -169,25 +241,81 @@ fn arena_two_requires_a_pre_death_hit_then_a_burst_after_death() {
         scenario.objective()
     );
 
-    // The documented solution (one early hit, then a post-death burst) wins.
+    // The documented solution should demonstrate that attacks after death are
+    // still accepted, without requiring a batch operation.
     assert_eq!(
         run_script(scenario.id(), scenario.solution_script()).outcome,
         Outcome::Win
     );
-    // The naive script (no post-death burst) does not.
+    assert!(
+        !scenario.solution_script().contains("batch"),
+        "Arena 2 is about fighting after death, not batch timing"
+    );
+
+    // A non-batched sequence of cooldown-spaced attacks should win because the
+    // monster is dead, not because of how packets were grouped. The first hit
+    // causes a server retaliation/death, but this scenario's bug still accepts
+    // later attacks from the dead player.
+    let sequential_kill = "send Attack { target: 1 }\nsleep 750\nsend Attack { target: 1 }\nsleep 750\nsend Attack { target: 1 }\nsleep 750\nsend Attack { target: 1 }\n";
+    let sequential_result = run_script(scenario.id(), sequential_kill);
+    assert_eq!(
+        sequential_result.outcome,
+        Outcome::Win,
+        "four cooldown-spaced 40-damage hits should kill the 160 HP monster"
+    );
+    assert!(
+        sequential_result
+            .events
+            .iter()
+            .any(|event| event.kind == "server"
+                && event.name == "Death"
+                && event.fields["target"] == json!(0)),
+        "the backend must emit the player's death instead of the frontend inventing retaliation"
+    );
+    assert!(
+        sequential_result
+            .events
+            .iter()
+            .any(|event| event.kind == "server"
+                && event.name == "Death"
+                && event.fields["target"] == json!(1)),
+        "the backend must emit monster death when HP reaches zero"
+    );
+
+    // Batch/too-fast attacks are not enough: Arena 2 is not a batch puzzle, and
+    // its normal attack cooldown is still enforced by the backend simulation.
+    let cooldown_violating_batch = "batch {\n  send Attack { target: 1 }\n  send Attack { target: 1 }\n  send Attack { target: 1 }\n  send Attack { target: 1 }\n}\n";
+    let cooldown_result = run_script(scenario.id(), cooldown_violating_batch);
+    assert_ne!(
+        cooldown_result.outcome,
+        Outcome::Win,
+        "same-tick attacks must not bypass Arena 2's attack cooldown"
+    );
+    let cooldown_errors = cooldown_result
+        .events
+        .iter()
+        .filter(|event| {
+            event.kind == "server"
+                && event.name == "Info"
+                && event.fields["level"] == json!("error")
+                && event.fields["reason"] == json!("cooldown")
+                && event.fields["action"] == json!("Attack")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        cooldown_errors.len(),
+        3,
+        "the server should explain each cooldown-dropped Attack"
+    );
+    assert!(cooldown_errors.iter().all(|event| {
+        event.fields["ready_at_ms"] == json!(750) && event.fields["remaining_ms"] == json!(750)
+    }));
+
+    // The naive script still does not win because its post-death attacks arrive
+    // during cooldown and leave the monster alive.
     assert_ne!(
         run_script(scenario.id(), scenario.naive_script()).outcome,
         Outcome::Win
-    );
-
-    // Killing the monster in the wrong order must not win: a single pre-death
-    // hit with a later single hit is rejected because the win check enforces a
-    // specific action order, not merely that the monster took damage.
-    let wrong_order = "send Attack { target: 1 }\nsleep 300\nsend Attack { target: 1 }\n";
-    assert_ne!(
-        run_script(scenario.id(), wrong_order).outcome,
-        Outcome::Win,
-        "arena 2 must reject a solution that ignores the required action order"
     );
 }
 
@@ -311,6 +439,197 @@ fn audited_scenario_mechanics_match_visible_setup() {
 }
 
 #[test]
+fn market_cancel_button_sends_packet_and_applies_server_notifications() {
+    let app_js = include_str!("../client/app.js");
+    // The cancel button must submit the real packet. Listing removal and returned
+    // mail are then driven by server notification events in the run result, not
+    // by the click handler mutating market/mail state locally.
+    assert!(
+        app_js.contains("function sendPacketScript"),
+        "market cancel should send a one-packet script to the server"
+    );
+    assert!(
+        app_js.contains("function applyServerNotifications"),
+        "client must apply server-side notifications to refresh market/mail UI"
+    );
+    assert!(app_js.contains("ListingRemoved"));
+    assert!(app_js.contains("MailCreated"));
+    assert!(
+        !app_js
+            .contains("cancel.onclick = () => appendScriptLine(`send ${listing.cancel_packet}`)"),
+        "cancel must not just append the packet to the editor"
+    );
+}
+
+#[test]
+fn market_cancel_result_contains_server_notifications_for_ui_state() {
+    let result = run_script(
+        "07-auction-cancel-refund-dupe",
+        "send CancelListing { listing: 31 }\n",
+    );
+    assert_ne!(
+        result.outcome,
+        Outcome::Win,
+        "canceling the visible non-sword listing must not complete the sword objective"
+    );
+    assert!(result.events.iter().any(|event| {
+        event.kind == "server" && event.name == "ListingRemoved" && event.fields["listing"] == 31
+    }));
+    assert!(result.events.iter().any(|event| {
+        event.kind == "server"
+            && event.name == "MailCreated"
+            && event.fields["mail"] == 3
+            && event.fields["attachment"] == "Copper Charm"
+            && event.fields["sprite"] == "gem"
+    }));
+}
+
+#[tokio::test]
+async fn arena_three_visible_setup_explains_shield_math_and_retaliation() {
+    let payload = api_scenarios_payload().await;
+    let scenarios = payload.as_array().expect("/api/scenarios returns an array");
+    let arena_three = scenarios
+        .iter()
+        .find(|scenario| scenario["id"] == "16-cooldown-bypass-batch")
+        .expect("arena 3 exists");
+
+    assert!(arena_three["objective"]
+        .as_str()
+        .is_some_and(|objective| objective.contains("retaliates")));
+    let objective = arena_three["objective"].as_str().unwrap_or("");
+    assert!(objective.contains("Shield: 150"));
+    assert!(objective.contains("50 shield damage"));
+    assert!(objective.contains("1000ms cooldown"));
+    assert!(objective.contains("500ms"));
+    assert!(!objective.contains("batch"));
+
+    let entities = arena_three["scene"]["entities"]
+        .as_array()
+        .expect("arena 3 entities are an array");
+    let boss = entities
+        .iter()
+        .find(|entity| entity["label"].as_str().unwrap_or("").contains("Boss"))
+        .expect("arena 3 has a boss");
+    assert_eq!(boss["type"], "monster");
+    assert_eq!(boss["shield"], true);
+    assert_eq!(boss["hp"], 1);
+    assert_eq!(boss["max_hp"], 1);
+    assert_eq!(boss["shield_hp"], 150);
+    assert_eq!(boss["max_shield"], 150);
+
+    let skill_source = entities
+        .iter()
+        .find(|entity| {
+            entity["label"]
+                .as_str()
+                .unwrap_or("")
+                .contains("PowerStrike")
+        })
+        .expect("arena 3 has a visible skill source");
+    assert_eq!(skill_source["shield_damage"], 50);
+
+    assert!(arena_three["packets"]
+        .as_array()
+        .is_some_and(|packets| packets
+            .iter()
+            .any(|packet| packet == "Attack { target: Int }")));
+    let skills = arena_three["skills"]["actions"]
+        .as_array()
+        .expect("arena 3 exposes skill rows");
+    assert_eq!(skills.len(), 2);
+    let attack = skills
+        .iter()
+        .find(|skill| skill["name"] == "Attack")
+        .expect("Attack is exposed as a skill");
+    assert_eq!(attack["cast_packet"], "Attack { target: 1 }");
+    assert_eq!(attack["description"], "10 HP damage, 750ms cooldown");
+    let power_strike = skills
+        .iter()
+        .find(|skill| skill["name"] == "PowerStrike")
+        .expect("PowerStrike is exposed as a skill");
+    assert_eq!(
+        power_strike["description"],
+        "50 shield damage, 1000ms cooldown"
+    );
+    assert_eq!(
+        power_strike["cast_packet"],
+        "CastSkill { skill: 10, target: 1 }"
+    );
+
+    assert_ne!(
+        run_script(
+            "16-cooldown-bypass-batch",
+            "batch {\n  send CastSkill { skill: 10, target: 1 }\n  send CastSkill { skill: 10, target: 1 }\n  send CastSkill { skill: 10, target: 1 }\n}\n"
+        )
+        .outcome,
+        Outcome::Win,
+        "breaking the shield alone should not defeat a 1 HP boss"
+    );
+    assert_eq!(
+        run_script(
+            "16-cooldown-bypass-batch",
+            "batch {\n  send CastSkill { skill: 10, target: 1 }\n  send CastSkill { skill: 10, target: 1 }\n  send CastSkill { skill: 10, target: 1 }\n  send Attack { target: 1 }\n}\n"
+        )
+        .outcome,
+        Outcome::Win,
+        "the boss should be defeated only after the shield is broken and Attack lands in the same retaliation window"
+    );
+    let batched_solution = run_script(
+        "16-cooldown-bypass-batch",
+        "batch {\n  send CastSkill { skill: 10, target: 1 }\n  send CastSkill { skill: 10, target: 1 }\n  send CastSkill { skill: 10, target: 1 }\n  send Attack { target: 1 }\n}\n",
+    );
+    assert!(
+        !batched_solution.events.iter().any(|event| {
+            event.kind == "server"
+                && event.name == "Info"
+                && event.fields["reason"] == json!("cooldown")
+        }),
+        "same-frame Arena 3 casts are the intended cooldown bypass and should not be rejected"
+    );
+    let cooldown_feedback = run_script(
+        "16-cooldown-bypass-batch",
+        "send CastSkill { skill: 10, target: 1 }\nsleep 500\nsend CastSkill { skill: 10, target: 1 }\nsend Attack { target: 1 }\nsleep 300\nsend Attack { target: 1 }\n",
+    );
+    assert!(
+        cooldown_feedback.events.iter().any(|event| {
+            event.kind == "server"
+                && event.name == "Info"
+                && event.fields["level"] == json!("error")
+                && event.fields["reason"] == json!("cooldown")
+                && event.fields["action"] == json!("PowerStrike")
+                && event.fields["skill"] == json!(10)
+                && event.fields["ready_at_ms"] == json!(1000)
+                && event.fields["remaining_ms"] == json!(500)
+        }),
+        "skill cooldown drops should emit an S2C Info error"
+    );
+    assert!(
+        cooldown_feedback.events.iter().any(|event| {
+            event.kind == "server"
+                && event.name == "Info"
+                && event.fields["level"] == json!("error")
+                && event.fields["reason"] == json!("cooldown")
+                && event.fields["action"] == json!("Attack")
+                && event.fields["ready_at_ms"] == json!(1250)
+                && event.fields["remaining_ms"] == json!(450)
+        }),
+        "attack cooldown drops should emit an S2C Info error"
+    );
+
+    let combat_js = include_str!("../client/combat.js");
+    assert!(combat_js.contains("'16-cooldown-bypass-batch'"));
+    assert!(combat_js.contains("retaliationDelayMs: 500"));
+    assert!(combat_js.contains("attackDamage: 10"));
+    assert!(combat_js.contains("attackCooldownMs: 750"));
+    let app_js = include_str!("../client/app.js");
+    assert!(app_js.contains("skill-card"));
+    assert!(app_js.contains("appendScriptLine(`send ${skill.cast_packet}`)"));
+    let style_css = include_str!("../client/style.css");
+    assert!(style_css.contains(".skill-list"));
+    assert!(style_css.contains("grid-template-columns: 1fr"));
+}
+
+#[test]
 fn client_combat_feedback_does_not_explain_arena_two_packet_acceptance() {
     let combat_js = include_str!("../client/combat.js");
     assert!(
@@ -318,6 +637,89 @@ fn client_combat_feedback_does_not_explain_arena_two_packet_acceptance() {
             && !combat_js.contains("still accepts attack")
             && !combat_js.contains("dead, but"),
         "Arena 2 death feedback is player-facing and must not explain the packet acceptance rule"
+    );
+}
+
+#[test]
+fn frontend_combat_renders_backend_packets_instead_of_inventing_retaliation() {
+    let combat_js = include_str!("../client/combat.js");
+    let scene_js = include_str!("../client/scene.js");
+    let app_js = include_str!("../client/app.js");
+
+    assert!(
+        combat_js.contains("packetForAction")
+            && app_js.contains("const combatPacket = combat.packetForAction(action)")
+            && app_js.contains("sendPacketScript(combatPacket)"),
+        "clicking a monster should send the real Attack packet to the backend"
+    );
+    assert!(
+        !combat_js.contains("run the script to resolve combat on the server"),
+        "monster clicks should behave like gameplay, not ask the player to manually run the script"
+    );
+    assert!(
+        combat_js.contains("applyServerDamage") && combat_js.contains("applyServerDeath"),
+        "combat HUD should update from authoritative server Damage/Death packets"
+    );
+    assert!(
+        !combat_js.contains("setTimeout")
+            && !combat_js.contains("scheduleRetaliation")
+            && !combat_js.contains("retaliationTimer"),
+        "frontend must not schedule or invent monster retaliation"
+    );
+    assert!(
+        scene_js.contains("addServerCombatStrike")
+            && scene_js.contains("ev.kind === 'server'")
+            && scene_js.contains("ev.name === 'Damage'"),
+        "scene renderer should draw combat strikes from authoritative server Damage packets"
+    );
+    assert!(
+        !scene_js.contains("now + 250")
+            && !scene_js.contains("enemy retaliates")
+            && !scene_js.contains("retaliation")
+            && !scene_js.contains("Player's strike preview"),
+        "scene renderer must not draw hardcoded or speculative combat strikes"
+    );
+}
+
+#[test]
+fn frontend_console_groups_script_packets_result_and_events_as_tabs() {
+    let html = include_str!("../client/index.html");
+    let app_js = include_str!("../client/app.js");
+    let style_css = include_str!("../client/style.css");
+
+    assert!(
+        html.contains("class=\"console-tabs\"")
+            && html.contains("data-tab=\"script-tab\"")
+            && html.contains("data-tab=\"packets-tab\"")
+            && html.contains("data-tab=\"result-tab\"")
+            && html.contains("data-tab=\"events-tab\""),
+        "script, packets, run result, and event log should be grouped as tabs in the packet console"
+    );
+    assert!(
+        html.contains("<div id=\"tab-packets\"")
+            && html.contains("<pre id=\"packets\"></pre>")
+            && html.contains("<div id=\"tab-result\"")
+            && html.contains("<pre id=\"result\"></pre>")
+            && html.contains("<div id=\"tab-events\"")
+            && html.contains("<div id=\"events\"></div>"),
+        "packets, run result, and event log panes should live in the same dock as the script editor"
+    );
+    assert!(
+        !html.contains("<details class=\"panel\"")
+            && !html.contains("<summary>Packets you can send</summary>"),
+        "packets/result/events should no longer be separate stage details panels"
+    );
+    assert!(
+        app_js.contains("function activateConsoleTab")
+            && app_js.contains("tab.onclick = () => activateConsoleTab(tab.dataset.tab)")
+            && app_js.contains("activateConsoleTab('result-tab')"),
+        "console tabs should be interactive and switch to run result after execution"
+    );
+    assert!(
+        style_css.contains(".console-tabs")
+            && style_css.contains(".console-tab.active")
+            && style_css.contains(".console-pane"),
+        "tab dock should have dedicated layout styles"
     );
 }
 
@@ -413,6 +815,140 @@ async fn api_scenarios_are_player_safe_and_visual() {
     assert_eq!(arena_two["title"], "Arena 2");
     assert_eq!(arena_two["scene"]["template"], "arena");
     assert_eq!(arena_two["objective"], "Kill the monster.");
+    assert!(
+        arena_two.get("market").is_none(),
+        "non-market puzzles should not expose empty market UI data"
+    );
+    assert!(
+        arena_two.get("mail").is_none(),
+        "non-mail puzzles should not expose empty mail UI data"
+    );
+
+    let market_one = scenarios
+        .iter()
+        .find(|scenario| scenario["id"] == "05-auction-negative-price")
+        .expect("market puzzle exists");
+    assert_eq!(market_one["market"]["gold"], 100);
+    assert!(market_one["market"]["listings"]
+        .as_array()
+        .is_some_and(|listings| listings.iter().any(|listing| {
+            listing["id"] == 11
+                && listing["item"] == "Phoenix Mount"
+                && listing["price"] == 500
+                && listing["stock"] == 1
+                && listing["sprite"] == "mount"
+        })));
+    assert!(
+        market_one.get("mail").is_none(),
+        "pure market puzzles should not expose mail UI data"
+    );
+
+    let market_three = scenarios
+        .iter()
+        .find(|scenario| scenario["id"] == "07-auction-cancel-refund-dupe")
+        .expect("market/mail puzzle exists");
+    let market_three_listing = &market_three["market"]["listings"][0];
+    assert_eq!(market_three_listing["id"], 31);
+    assert_eq!(market_three_listing["item"], "Copper Charm");
+    assert_eq!(market_three_listing["sprite"], "gem");
+    assert_eq!(
+        market_three_listing["status"], "pending",
+        "the visible UI-cancelable listing is a non-objective item"
+    );
+    assert_eq!(
+        market_three_listing["cancel_packet"], "CancelListing { listing: 31 }",
+        "the visible listing exposes a cancel action for UI packet gameplay"
+    );
+    let market_three_sold_listing = market_three["market"]["listings"]
+        .as_array()
+        .expect("market 3 listings are an array")
+        .iter()
+        .find(|listing| listing["id"] == 32)
+        .expect("market 3 shows the completed sword sale as sold");
+    assert_eq!(market_three_sold_listing["item"], "Listed Sword");
+    assert_eq!(market_three_sold_listing["sprite"], "blade");
+    assert_eq!(market_three_sold_listing["status"], "sold");
+    assert_eq!(market_three_sold_listing["note"], "sale proceeds mailed");
+    assert!(
+        market_three_sold_listing.get("cancel_packet").is_none()
+            || market_three_sold_listing["cancel_packet"].is_null(),
+        "the hidden objective sword is not the visible UI cancel target"
+    );
+    // Before canceling, only the sale proceeds are waiting. The returned-item
+    // mail is created by the cancel path, so it must not be pre-populated.
+    let market_three_mail = market_three["mail"]["messages"]
+        .as_array()
+        .expect("market 3 exposes mail");
+    assert_eq!(
+        market_three_mail.len(),
+        1,
+        "only the sale mail exists until the listing is canceled"
+    );
+    assert!(market_three_mail.iter().any(|message| {
+        message["id"] == 1 && message["attachment"] == "Gold" && message["status"] == "unclaimed"
+    }));
+    assert!(
+        !market_three_mail.iter().any(|message| message["id"] == 2),
+        "the returned-sword mail is a consequence of canceling, not initial state"
+    );
+
+    let post_office = scenarios
+        .iter()
+        .find(|scenario| scenario["id"] == "08-dupe-mail-desync")
+        .expect("post-office puzzle exists");
+    assert!(
+        post_office.get("market").is_none(),
+        "mail-only puzzles should not expose market UI data"
+    );
+    assert_eq!(
+        post_office["mail"]["messages"][0]["subject"],
+        "Draft slot #1"
+    );
+    assert_eq!(post_office["mail"]["messages"][0]["status"], "draft");
+}
+
+#[tokio::test]
+async fn api_scene_entities_expose_monster_traits_and_combat_stats() {
+    let payload = api_scenarios_payload().await;
+    let scenarios = payload.as_array().expect("/api/scenarios returns an array");
+
+    let arena_two = scenarios
+        .iter()
+        .find(|scenario| scenario["id"] == "02-arena-fight-while-dead")
+        .expect("arena 2 exists");
+    let arena_monster = arena_two["scene"]["entities"]
+        .as_array()
+        .expect("arena 2 entities are an array")
+        .iter()
+        .find(|entity| entity["sprite"] == "monster")
+        .expect("arena 2 has a monster entity");
+    assert_eq!(arena_monster["type"], "monster");
+    assert!(arena_monster["traits"]
+        .as_array()
+        .is_some_and(|traits| traits.iter().any(|value| value == "monster")));
+    assert_eq!(arena_monster["hp"], 160);
+    assert_eq!(arena_monster["max_hp"], 160);
+
+    let crypt = scenarios
+        .iter()
+        .find(|scenario| scenario["id"] == "03-target-validation-dead")
+        .expect("crypt scenario exists");
+    let shielded_boss = crypt["scene"]["entities"]
+        .as_array()
+        .expect("crypt entities are an array")
+        .iter()
+        .find(|entity| entity["sprite"] == "boss")
+        .expect("crypt has a boss entity");
+    assert_eq!(shielded_boss["type"], "monster");
+    assert_eq!(shielded_boss["shield"], true);
+}
+
+#[test]
+fn scene_renderer_uses_entity_traits_for_monster_overlays() {
+    let scene_js = include_str!("../client/scene.js");
+    assert!(scene_js.contains("function isMonsterEntity"));
+    assert!(scene_js.contains("entity.traits"));
+    assert!(scene_js.contains("drawEntityTraitBadges"));
 }
 
 #[tokio::test]
