@@ -168,7 +168,7 @@ class CombatController {
     }
 
     if (result.outcome === 'win' && !this.state.monsterDead) {
-      this.killMonster('challenge complete');
+      this.killMonster('Exploit accepted.');
     }
     this.render();
   }
@@ -200,7 +200,7 @@ class CombatController {
   applyServerDeath(event) {
     const target = Number(event.fields?.target);
     if (target === this.monsterTarget()) {
-      this.killMonster('challenge complete');
+      this.killMonster('Exploit accepted.');
     } else {
       this.markPlayerDead(`${this.config.retaliator || 'monster'} retaliated with a fatal blow`);
     }
@@ -227,7 +227,7 @@ class CombatController {
     this.renderer.setHiddenLabels([this.config.monsterLabel || (this.config.monsterStatLabel === 'SHIELD' ? 'Boss' : 'Monster')]);
     this.dom.death.classList.add('hidden');
     this.showPopup(message);
-    this.setStatus('objective complete');
+    this.setStatus('flag captured');
     this.render();
   }
 
@@ -253,7 +253,7 @@ class CombatController {
   }
 
   showPopup(message) {
-    this.dom.popupTitle.textContent = 'Challenge complete';
+    this.dom.popupTitle.textContent = 'Flag captured';
     this.dom.popupText.textContent = message;
     this.dom.popup.classList.remove('hidden');
   }

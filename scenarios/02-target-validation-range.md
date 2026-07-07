@@ -57,7 +57,7 @@ send Use { target: 7 }
 
 The guard kills the player when the player enters its lethal radius.
 
-## Defensive note
+## Exploit recap
 
-All authority checks must happen server-side: distance, line of sight, target
-state, permissions, and cooldowns. Client UI checks are convenience only.
+The Use packet reached the lever directly; the route and range check only
+existed in the normal client flow.

@@ -40,9 +40,9 @@ the antidote before the failed debit rolls back the purchase.
 ## Intended exploit
 
 ```
-batch {
-    send BuyItem { item: 301 }
-    send UseItem { item: 301 }
+send_batch {
+    BuyItem { item: 301 }
+    UseItem { item: 301 }
 }
 ```
 
@@ -56,7 +56,7 @@ send BuyItem { item: 301 }
 
 The purchase fails due to insufficient gold; the poison kills the player.
 
-## Defensive note
+## Exploit recap
 
-Never grant usable inventory before payment succeeds. Process payment and item
-grant atomically, or make uncommitted items unusable until settlement completes.
+The item became usable before payment fully settled, so same-frame use beat the
+debit.

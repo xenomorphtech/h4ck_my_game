@@ -50,7 +50,7 @@ impl Scenario for ScenarioImpl {
         "Stop the shielded enemy commander."
     }
     fn lesson(&self) -> &'static str {
-        "Direct attacks were faction-checked, but ordering a neutral siege unit to fire was not. The command path skipped the faction gate the attack path enforced. Fix: apply the same authorization to every code path that can deal damage."
+        "The command path let a neutral siege unit deal damage where direct friendly-fire rules would have blocked you."
     }
     fn packets(&self) -> &'static [&'static str] {
         &[

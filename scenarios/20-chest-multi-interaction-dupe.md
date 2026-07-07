@@ -39,10 +39,10 @@ see `opened == false` and each dispatch the reward.
 ## Intended exploit
 
 ```
-batch {
-    send OpenChest { chest: 81 }
-    send OpenChest { chest: 81 }
-    send OpenChest { chest: 81 }
+send_batch {
+    OpenChest { chest: 81 }
+    OpenChest { chest: 81 }
+    OpenChest { chest: 81 }
 }
 ```
 
@@ -58,8 +58,7 @@ send OpenChest { chest: 81 }
 
 The second open sees `opened == true` and yields nothing.
 
-## Defensive note
+## Exploit recap
 
-Flip the opened flag atomically before granting rewards (compare-and-set), or
-process interactions per-object with a lock. Reward dispatch must be idempotent
-against the object's terminal state.
+Multiple opens hit the chest before its emptied state took effect, producing
+repeated rewards.

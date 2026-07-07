@@ -46,9 +46,9 @@ suppressed because the draft no longer exists.
 send CreateDraft { recipient: 0 }
 await DraftCreated { draft: 1 }
 
-batch {
-    send AttachItem  { draft: 1, item: 1001 }
-    send CancelDraft { draft: 1 }
+send_batch {
+    AttachItem  { draft: 1, item: 1001 }
+    CancelDraft { draft: 1 }
 }
 ```
 
@@ -59,8 +59,7 @@ returned copy.
 
 Attach, wait, then cancel: the item is removed first and simply returned once.
 
-## Defensive note
+## Exploit recap
 
-Inventory transfer must be atomic: remove from source and add to destination in
-one transaction. Cancelling a draft should reference committed attachment rows,
-not in-flight client intent.
+Attach and cancel observed different draft states, producing a returned
+attachment without spending the original.

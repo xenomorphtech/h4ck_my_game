@@ -123,7 +123,7 @@ impl Scenario for ScenarioImpl {
         "Kill the monster."
     }
     fn lesson(&self) -> &'static str {
-        "The combat handler checked target health but never checked that the attacker was alive. A fatal counterattack should move the player into a state where normal actions are rejected unless the scenario explicitly allows ghost actions. Fix: validate actor liveness on every action path, not just movement/UI input."
+        "The server kept accepting attacks after your death, so the monster could still be finished from a dead-player state."
     }
     fn packets(&self) -> &'static [&'static str] {
         &["Attack { target: Int, power: Int = 40 }"]

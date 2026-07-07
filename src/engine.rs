@@ -47,25 +47,27 @@ pub fn run_script(scenario_id: &str, script: &str) -> RunResult {
     // these to update the market/mail UI instead of mutating state locally.
     events.extend(scenario.notifications(&program.events));
 
+    let visible_scenario = scenario.player_title();
+
     if won {
         events.push(PacketEvent {
             t: program.max_time,
             kind: "server".to_string(),
             name: "ObjectiveComplete".to_string(),
-            fields: Map::from_iter([("scenario".to_string(), json!(scenario_id))]),
+            fields: Map::from_iter([("scenario".to_string(), json!(visible_scenario))]),
         });
     } else {
         events.push(PacketEvent {
             t: program.max_time,
             kind: "server".to_string(),
             name: "ObjectiveFailed".to_string(),
-            fields: Map::from_iter([("scenario".to_string(), json!(scenario_id))]),
+            fields: Map::from_iter([("scenario".to_string(), json!(visible_scenario))]),
         });
     }
 
     let mut state = Map::from_iter([
-        ("scenario".to_string(), json!(scenario_id)),
-        ("title".to_string(), json!(scenario.player_title())),
+        ("scenario".to_string(), json!(visible_scenario)),
+        ("title".to_string(), json!(visible_scenario)),
         ("objective".to_string(), json!(scenario.objective())),
         ("packets_sent".to_string(), json!(program.events.len())),
         (
@@ -100,7 +102,7 @@ pub fn compile_script(script: &str) -> Result<ScriptProgram, String> {
 
     let mut parser = Parser { lines, idx: 0 };
     let mut ctx = ExecCtx::default();
-    parser.exec_block(&mut ctx, None, None)?;
+    parser.exec_block(&mut ctx, None, None, false)?;
     if parser.idx < parser.lines.len() {
         return Err(format!(
             "unexpected trailing input: {}",
@@ -131,6 +133,7 @@ impl Parser {
         ctx: &mut ExecCtx,
         forced_time: Option<u64>,
         loop_var: Option<(&str, i64)>,
+        allow_packet_literals: bool,
     ) -> Result<(), String> {
         while self.idx < self.lines.len() {
             let line = self.lines[self.idx].clone();
@@ -140,15 +143,22 @@ impl Parser {
             }
 
             if line == "batch {" {
+                return Err(
+                    "batch was renamed to send_batch; packet lines inside send_batch omit send"
+                        .to_string(),
+                );
+            }
+
+            if line == "send_batch {" {
                 self.idx += 1;
                 let t = forced_time.unwrap_or(ctx.now);
-                self.exec_block(ctx, Some(t), loop_var)?;
+                self.exec_block(ctx, Some(t), loop_var, true)?;
                 continue;
             }
 
             if let Some(t) = parse_at_header(&line)? {
                 self.idx += 1;
-                self.exec_block(ctx, Some(t), loop_var)?;
+                self.exec_block(ctx, Some(t), loop_var, allow_packet_literals)?;
                 ctx.now = ctx.now.max(t);
                 continue;
             }
@@ -162,7 +172,12 @@ impl Parser {
                         lines: self.lines[body_start..body_end].to_vec(),
                         idx: 0,
                     };
-                    nested.exec_block(ctx, forced_time, Some((&var, value)))?;
+                    nested.exec_block(
+                        ctx,
+                        forced_time,
+                        Some((&var, value)),
+                        allow_packet_literals,
+                    )?;
                 }
                 self.idx = body_end + 1;
                 continue;
@@ -170,12 +185,24 @@ impl Parser {
 
             if let Some(rest) = line.strip_prefix("sleep ") {
                 if forced_time.is_some() {
-                    return Err("sleep is not allowed inside batch/at blocks".to_string());
+                    return Err("sleep is not allowed inside send_batch/at blocks".to_string());
                 }
                 let value = substitute(rest.trim(), loop_var)
                     .parse::<u64>()
                     .map_err(|_| format!("invalid sleep duration: {}", rest.trim()))?;
                 ctx.now += value;
+                self.idx += 1;
+                continue;
+            }
+
+            if allow_packet_literals && line.contains('{') {
+                if line.starts_with("send ") {
+                    return Err(
+                        "packet lines inside send_batch omit send; use Packet { ... }".to_string(),
+                    );
+                }
+                let event = parse_send(&line, forced_time.unwrap_or(ctx.now), loop_var)?;
+                ctx.events.push(event);
                 self.idx += 1;
                 continue;
             }

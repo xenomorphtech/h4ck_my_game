@@ -50,7 +50,7 @@ impl Scenario for ScenarioImpl {
         "Collect five provision kits."
     }
     fn lesson(&self) -> &'static str {
-        "Accepting the quest granted a starter item every time, while abandoning reset quest state without consuming prior grants. Fix: bind starter grants to account history or reclaim them on abandon."
+        "Quest restart state granted starter kits repeatedly while previous grants remained in inventory."
     }
     fn packets(&self) -> &'static [&'static str] {
         &["AcceptQuest { quest: Int }", "AbandonQuest { quest: Int }"]

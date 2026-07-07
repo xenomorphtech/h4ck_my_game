@@ -52,6 +52,8 @@ pub struct RunScriptRequest {
     pub message_type: String,
     pub scenario_id: String,
     pub script: String,
+    #[serde(default)]
+    pub append: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -191,12 +193,6 @@ const GATEHOUSE_INVENTORY: &[InventoryItem] = &[InventoryItem {
     sprite: "key",
     quantity: 0,
     slot: "target",
-}];
-const CRYPT_INVENTORY: &[InventoryItem] = &[InventoryItem {
-    name: "Training Sword",
-    sprite: "blade",
-    quantity: 1,
-    slot: "weapon",
 }];
 const SIEGE_INVENTORY: &[InventoryItem] = &[InventoryItem {
     name: "Allied Cannon #2",
@@ -403,7 +399,6 @@ fn inventory_for(id: &str) -> &'static [InventoryItem] {
     match id {
         "01-first-blood-batch" | "02-arena-fight-while-dead" => ARENA_1_INVENTORY,
         "02-target-validation-range" => GATEHOUSE_INVENTORY,
-        "03-target-validation-dead" => CRYPT_INVENTORY,
         "04-target-validation-faction" => SIEGE_INVENTORY,
         "16-cooldown-bypass-batch" => ARENA_SKILL_INVENTORY,
         "05-auction-negative-price" => MARKET_MOUNT_INVENTORY,

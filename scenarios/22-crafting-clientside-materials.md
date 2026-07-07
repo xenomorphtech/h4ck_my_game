@@ -81,8 +81,7 @@ or nothing valuable.
 
 Crafting through the normal UI fails because the player lacks 3 Dragon Scales.
 
-## Defensive note
+## Exploit recap
 
-The server must own recipe definitions. `CraftItem` should send only the recipe
-ID and optional crafting station; the server must compute required materials,
-validate positive quantities, remove them atomically, and then grant output.
+The craft accepted client-declared material counts, so the recipe completed
+without spending real materials.

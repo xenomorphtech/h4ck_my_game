@@ -66,7 +66,7 @@ impl Scenario for ScenarioImpl {
         "Activate the far shrine across the chasm."
     }
     fn lesson(&self) -> &'static str {
-        "Interact trusted client-supplied coordinates instead of the server's tracked position, so you could 'be' at the shrine without crossing. Fix: derive interaction position from authoritative server state, never from the packet."
+        "The interaction packet carried its own position, letting you activate the shrine without actually crossing."
     }
     fn packets(&self) -> &'static [&'static str] {
         &[

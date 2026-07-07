@@ -66,7 +66,7 @@ impl Scenario for ScenarioImpl {
         "Reach the relic behind the wall."
     }
     fn lesson(&self) -> &'static str {
-        "Movement validation lagged behind client intents, letting several same-frame intents pass before wall collision was committed. Fix: validate movement against authoritative position after every step."
+        "Several move intents landed before collision state caught up, carrying the interaction through the wall."
     }
     fn packets(&self) -> &'static [&'static str] {
         &[
@@ -75,7 +75,7 @@ impl Scenario for ScenarioImpl {
         ]
     }
     fn solution_script(&self) -> &'static str {
-        "batch {\n  send MoveIntent { seq: 1, dx: 2, dy: 0 }\n  send MoveIntent { seq: 2, dx: 2, dy: 0 }\n  send MoveIntent { seq: 3, dx: 2, dy: 0 }\n  send MoveIntent { seq: 4, dx: 2, dy: 0 }\n  send Interact { target: 77 }\n}\n"
+        "send_batch {\n  MoveIntent { seq: 1, dx: 2, dy: 0 }\n  MoveIntent { seq: 2, dx: 2, dy: 0 }\n  MoveIntent { seq: 3, dx: 2, dy: 0 }\n  MoveIntent { seq: 4, dx: 2, dy: 0 }\n  Interact { target: 77 }\n}\n"
     }
     fn naive_script(&self) -> &'static str {
         "send MoveIntent { seq: 1, dx: 1, dy: 0 }\nsleep 100\nsend Interact { target: 77 }\n"

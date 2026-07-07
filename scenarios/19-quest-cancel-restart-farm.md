@@ -54,8 +54,7 @@ again, leaving all granted kits in inventory.
 Accepting once and completing the quest normally yields a single reward and locks
 the quest as completed.
 
-## Defensive note
+## Exploit recap
 
-Starter-item grants must be tied to quest state transactionally: abandoning must
-reclaim ungifted starter items, or grant items on turn-in rather than accept.
-Track per-player quest grant ledgers to make accept idempotent.
+Quest restart state granted starter kits repeatedly while previous grants
+remained in inventory.

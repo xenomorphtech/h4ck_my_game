@@ -54,7 +54,7 @@ send SplitStack { slot: 0, count: 9 }
 
 This simply creates stacks of 1 and 9; no duplication.
 
-## Defensive note
+## Exploit recap
 
-Validate all quantity fields as bounded positive integers at packet decoding.
-Represent inventory counts with non-negative domain types, not raw signed ints.
+A negative split count moved stack math in the wrong direction and created extra
+inventory value.

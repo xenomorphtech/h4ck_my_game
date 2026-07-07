@@ -50,7 +50,7 @@ impl Scenario for ScenarioImpl {
         "Buy the castle deed without enough gold."
     }
     fn lesson(&self) -> &'static str {
-        "Gold arithmetic used a signed 32-bit boundary and wrapped a huge withdrawal into an exploitable balance. Fix: use checked arithmetic and domain-specific non-negative money types."
+        "A huge gold operation crossed the integer boundary and wrapped into a usable balance."
     }
     fn packets(&self) -> &'static [&'static str] {
         &["WithdrawGold { amount: Int }", "BuyItem { item: Int }"]

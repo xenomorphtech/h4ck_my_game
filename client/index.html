@@ -47,8 +47,8 @@
 
       <div id="complete-popup" class="complete-popup hidden" role="status">
         <div>
-          <strong id="complete-title">Challenge complete</strong>
-          <p id="complete-text">objective complete</p>
+          <strong id="complete-title">Flag captured</strong>
+          <p id="complete-text">Exploit accepted.</p>
         </div>
         <button id="complete-close" type="button" class="ghost">Close</button>
       </div>
@@ -88,7 +88,7 @@
       </section>
 
       <div id="lesson" class="lesson hidden">
-        <h3>Solved — what just happened</h3>
+        <h3>Exploit recap</h3>
         <p id="lesson-text"></p>
       </div>
     </section>
@@ -96,6 +96,7 @@
   <section id="editor-panel" aria-label="Packet console">
     <div class="console-tabs" role="tablist" aria-label="Packet console tabs">
       <button class="console-tab active" type="button" role="tab" aria-selected="true" aria-controls="tab-script" data-tab="script-tab">Script</button>
+      <button class="console-tab" type="button" role="tab" aria-selected="false" aria-controls="tab-syntax" data-tab="syntax-tab">Syntax</button>
       <button class="console-tab" type="button" role="tab" aria-selected="false" aria-controls="tab-packets" data-tab="packets-tab">Packets</button>
       <button class="console-tab" type="button" role="tab" aria-selected="false" aria-controls="tab-result" data-tab="result-tab">Run result</button>
       <button class="console-tab" type="button" role="tab" aria-selected="false" aria-controls="tab-events" data-tab="events-tab">Event log</button>
@@ -107,6 +108,58 @@
         <button id="reset" class="ghost">Reset example</button>
       </div>
       <textarea id="script" spellcheck="false"></textarea>
+    </div>
+    <div id="tab-syntax" class="console-pane syntax-pane" role="tabpanel" data-pane="syntax-tab" hidden>
+      <div class="syntax-scroll">
+        <section class="syntax-section">
+          <h3>Statements</h3>
+          <dl>
+            <dt><code>send Packet { field: value }</code></dt>
+            <dd>Emit one client packet at the current virtual time.</dd>
+            <dt><code>sleep ms</code></dt>
+            <dd>Advance virtual time. Not allowed inside <code>send_batch</code> or <code>at</code> blocks.</dd>
+            <dt><code>send_batch { Packet { field: value } ... }</code></dt>
+            <dd>Sends a batch of packets on the same packet frame. Packet lines inside the block omit <code>send</code>.</dd>
+            <dt><code>at(ms) { ... }</code></dt>
+            <dd>Emit nested packets at an absolute virtual timestamp.</dd>
+            <dt><code>for i in start..end { ... }</code></dt>
+            <dd>Repeat the block with an integer range; <code>end</code> is exclusive.</dd>
+          </dl>
+        </section>
+        <section class="syntax-section">
+          <h3>Values</h3>
+          <p>Fields accept integers, negative integers, booleans, quoted strings, and bare words. Arrays and nested objects are not parsed.</p>
+          <p><code>#</code> starts a comment. Each statement and each brace must be on its own line.</p>
+        </section>
+        <section class="syntax-section">
+          <h3>Clarifications</h3>
+          <ul>
+            <li><code>send_batch {</code> must open the packet-frame batch; close it with a line containing only <code>}</code>.</li>
+            <li>Loop variables substitute only when the whole field value is the variable, such as <code>x: i</code>.</li>
+            <li><code>await Packet { ... }</code> and <code>let x = await Packet { ... }</code> are accepted placeholders; they do not bind packet fields yet.</li>
+            <li>Packet names and field names are scenario-specific. Use the Packets tab for the current schema.</li>
+          </ul>
+        </section>
+        <section class="syntax-section">
+          <h3>Examples</h3>
+          <pre>send Attack { target: 1, power: 40 }
+sleep 750
+send Attack { target: 1 }</pre>
+          <pre>send_batch {
+  Attack { target: 1 }
+  Attack { target: 1 }
+  Attack { target: 1 }
+}</pre>
+          <pre>for x in 1..8 {
+  send Move { x: x, y: 3 }
+  sleep 20
+}</pre>
+          <pre>at(0) {
+  send Buyout { listing: 21, quantity: 1 }
+  send Buyout { listing: 21, quantity: 1 }
+}</pre>
+        </section>
+      </div>
     </div>
     <div id="tab-packets" class="console-pane" role="tabpanel" data-pane="packets-tab" hidden>
       <pre id="packets"></pre>

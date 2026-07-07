@@ -4,11 +4,13 @@ let socket = null;
 let renderer = null;
 let combat = null;
 let completed = new Set();
+let actionSessionStarted = false;
 // Client-side mirrors of the server's authoritative market/mail state. They are
 // only ever refreshed from the scenario payload or from server notification
 // events in a run result -- never mutated speculatively by a click handler.
 let liveMarket = null;
 let liveMail = null;
+let liveInventory = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -87,6 +89,7 @@ function renderCompletedBadges() {
 
 function selectScenario(scenario) {
   selected = scenario;
+  actionSessionStarted = false;
   document.querySelectorAll('.scenario').forEach((el) => {
     el.classList.toggle('active', el.dataset.id === scenario.id);
   });
@@ -188,8 +191,8 @@ function renderMarket(market) {
   }
 }
 
-// Add a packet line to the script editor so market/mail buttons drive the same
-// scripted flow the player runs manually, rather than acting as a separate path.
+// Add a packet line to the script editor for actions that are suggestions
+// rather than immediate world interactions.
 function appendScriptLine(line) {
   const editor = $('script');
   const current = editor.value.replace(/\s*$/, '');
@@ -235,9 +238,26 @@ function renderMail(mail) {
     attachment.className = 'listing-price';
     attachment.textContent = message.attachment;
 
+    if (isClaimableMail(message)) {
+      const claim = document.createElement('button');
+      claim.type = 'button';
+      claim.className = 'mail-claim';
+      claim.textContent = 'Claim';
+      claim.onclick = () => sendPacketScript(`send ClaimMailbox { mail: ${message.id} }`);
+      text.appendChild(claim);
+    }
+
     card.append(iconNode(message.sprite, message.subject), text, attachment);
     root.appendChild(card);
   }
+}
+
+function isClaimableMail(message) {
+  return Number.isFinite(Number(message.id))
+    && message.status !== 'claimed'
+    && message.status !== 'draft'
+    && message.attachment
+    && message.attachment !== 'empty';
 }
 
 function renderSkills(skills) {
@@ -284,6 +304,11 @@ function renderSkills(skills) {
 }
 
 function renderInventory(items) {
+  liveInventory = items ? JSON.parse(JSON.stringify(items)) : [];
+  renderInventoryView(liveInventory);
+}
+
+function renderInventoryView(items) {
   const root = $('inventory');
   root.innerHTML = '';
   $('inventory-count').textContent = `${items.length} slot${items.length === 1 ? '' : 's'}`;
@@ -352,14 +377,16 @@ function ensureSocket() {
 
 function runSelected() {
   if (!selected) return;
-  sendScript($('script').value, 'running packets…');
+  sendScript($('script').value, 'running packets…', false);
+  actionSessionStarted = true;
 }
 
 function sendPacketScript(line) {
-  sendScript(`${line}\n`, `sent packet: ${line}`);
+  sendScript(`${line}\n`, `sent packet: ${line}`, actionSessionStarted);
+  actionSessionStarted = true;
 }
 
-function sendScript(script, statusText) {
+function sendScript(script, statusText, append = false) {
   if (!selected) return;
   $('scene-status').textContent = statusText;
   const ws = ensureSocket();
@@ -367,6 +394,7 @@ function sendScript(script, statusText) {
     type: 'run_script',
     scenario_id: selected.id,
     script,
+    append,
   }));
   if (ws.readyState === WebSocket.OPEN) send();
   else ws.addEventListener('open', send, { once: true });
@@ -384,12 +412,12 @@ function renderResult(result) {
     ok: result.ok,
     outcome: result.outcome,
     time_ms: result.time_ms,
-    state: result.state,
+    state: visibleRunState(result.state),
     error: result.error,
   }, null, 2);
 
   $('scene-status').textContent = result.outcome === 'win'
-    ? 'objective complete'
+    ? 'flag captured'
     : result.outcome === 'lose'
       ? 'objective failed — inspect packets and try again'
       : 'script error';
@@ -403,11 +431,10 @@ function renderResult(result) {
     events.appendChild(div);
   }
 
+  rebaseSystemViews();
   applyServerNotifications(result.events || []);
   renderer.playEvents(result.events || [], result.outcome);
   combat.applyRunResult(result);
-
-  activateConsoleTab('result-tab');
 
   if (result.outcome === 'win' && result.state && result.state.lesson) {
     $('lesson-text').textContent = result.state.lesson;
@@ -418,9 +445,19 @@ function renderResult(result) {
   }
 }
 
+function visibleRunState(state) {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return state;
+  const out = { ...state };
+  delete out.scenario_id;
+  delete out.internal_id;
+  delete out.bug_slug;
+  return out;
+}
+
 function applyServerNotifications(events) {
   let marketChanged = false;
   let mailChanged = false;
+  let inventoryChanged = false;
 
   for (const packet of events) {
     if (packet.kind !== 'server') continue;
@@ -438,20 +475,61 @@ function applyServerNotifications(events) {
           subject: fields.subject || 'Listing cancelled',
           attachment: fields.attachment || 'Returned item',
           sprite: fields.sprite || 'mailbox',
-          status: fields.status || 'unread',
+          status: fields.status || 'unclaimed',
         });
       }
       liveMail.messages = messages;
       mailChanged = true;
+    } else if (packet.name === 'MailClaimed' && liveMail) {
+      const mailId = Number(fields.mail);
+      for (const message of liveMail.messages || []) {
+        if (Number(message.id) === mailId) {
+          message.status = fields.status || 'claimed';
+        }
+      }
+      mailChanged = true;
+    } else if (packet.name === 'InventoryAdded') {
+      if (!liveInventory) liveInventory = selected ? JSON.parse(JSON.stringify(selected.inventory || [])) : [];
+      addInventoryItem(fields);
+      inventoryChanged = true;
     }
   }
 
   if (marketChanged) renderMarket(liveMarket);
   if (mailChanged) renderMail(liveMail);
+  if (inventoryChanged) renderInventoryView(liveInventory);
+}
+
+function rebaseSystemViews() {
+  if (!selected) return;
+  liveMarket = selected.market ? JSON.parse(JSON.stringify(selected.market)) : null;
+  liveMail = selected.mail ? JSON.parse(JSON.stringify(selected.mail)) : null;
+  liveInventory = JSON.parse(JSON.stringify(selected.inventory || []));
+  renderSystemViews({ market: liveMarket, mail: liveMail, skills: selected.skills || null });
+  renderInventoryView(liveInventory);
+}
+
+function addInventoryItem(fields) {
+  const name = fields.item || fields.name || 'Item';
+  const quantity = Number(fields.quantity ?? fields.count ?? 1) || 1;
+  const existing = (liveInventory || []).find((item) => item.name === name);
+  if (existing) {
+    existing.quantity = Number(existing.quantity || 0) + quantity;
+    if (fields.slot) existing.slot = fields.slot;
+    if (fields.sprite) existing.sprite = fields.sprite;
+    return;
+  }
+  liveInventory.push({
+    name,
+    sprite: fields.sprite || 'mailbox',
+    quantity,
+    slot: fields.slot || 'bag',
+  });
 }
 
 function resetExample() {
   if (!selected) return;
+  actionSessionStarted = false;
   $('script').value = selected.example_script || '';
   $('result').textContent = '';
   $('events').innerHTML = '';

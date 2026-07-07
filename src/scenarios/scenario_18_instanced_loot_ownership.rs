@@ -50,7 +50,7 @@ impl Scenario for ScenarioImpl {
         "Take another party member's drop."
     }
     fn lesson(&self) -> &'static str {
-        "Loot visibility was client-side but ownership was not checked on the server's Loot path. Fix: enforce ownership/party permissions server-side for every loot claim."
+        "The loot claim path accepted a drop you could see, even though it belonged to another player."
     }
     fn packets(&self) -> &'static [&'static str] {
         &["Attack { target: Int }", "Loot { drop: Int }"]

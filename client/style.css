@@ -221,13 +221,19 @@ button.ghost, #toggle-drawer {
   opacity: 0.75;
   border-color: rgba(148, 163, 184, 0.38);
 }
-.listing-cancel {
+.listing-cancel, .mail-claim {
   width: max-content;
   margin-top: 7px;
   padding: 4px 8px;
   font-size: 12px;
+}
+.listing-cancel {
   background: #92400e;
   border: 1px solid #f59e0b;
+}
+.mail-claim {
+  background: #1d4ed8;
+  border: 1px solid #60a5fa;
 }
 .mail-card {
   border-color: rgba(96, 165, 250, 0.42);
@@ -355,6 +361,63 @@ textarea {
   height: 100%;
   border: 0;
   border-radius: 0;
+}
+.syntax-scroll {
+  height: 100%;
+  overflow: auto;
+  padding: 12px 14px 18px;
+  color: #d7e1ee;
+}
+.syntax-section {
+  max-width: 960px;
+  padding: 0 0 12px;
+  margin: 0 0 12px;
+  border-bottom: 1px solid #1f2937;
+}
+.syntax-section:last-child {
+  border-bottom: 0;
+}
+.syntax-section h3 {
+  margin: 0 0 8px;
+  color: #bfdbfe;
+  font-size: 14px;
+}
+.syntax-section p,
+.syntax-section dd,
+.syntax-section li {
+  color: #b6c2d1;
+  line-height: 1.45;
+}
+.syntax-section dl {
+  display: grid;
+  grid-template-columns: minmax(210px, 310px) minmax(0, 1fr);
+  gap: 8px 14px;
+  margin: 0;
+}
+.syntax-section dt,
+.syntax-section dd {
+  margin: 0;
+}
+.syntax-section ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.syntax-section code {
+  color: #f8fafc;
+  background: #111827;
+  border: 1px solid #27364a;
+  border-radius: 4px;
+  padding: 1px 4px;
+  white-space: normal;
+}
+.syntax-section pre {
+  margin: 8px 0 0;
+  padding: 10px;
+  overflow-x: auto;
+  color: #d7e1ee;
+  background: #070b12;
+  border: 1px solid #1f2937;
+  border-radius: 6px;
 }
 .combat-hud {
   position: absolute;

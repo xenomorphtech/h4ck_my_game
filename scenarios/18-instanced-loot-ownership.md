@@ -53,8 +53,7 @@ The player claims a drop assigned to another party member.
 
 Waiting for the UI never works because the loot button is hidden from non-owners.
 
-## Defensive note
+## Exploit recap
 
-Loot eligibility must be checked server-side on every claim. Drop IDs should not
-be claimable merely because they are visible in the packet feed; visibility and
-authorization are separate concerns.
+The loot claim path accepted a drop you could see, even though it belonged to
+another player.

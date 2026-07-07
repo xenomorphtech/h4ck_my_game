@@ -44,13 +44,13 @@ impl Scenario for ScenarioImpl {
         "Obtain two gems. Only one is for sale."
     }
     fn lesson(&self) -> &'static str {
-        "The stock check and the decrement weren't atomic, so two buyouts in the same tick both passed the check before either wrote. Fix: use an atomic compare-and-decrement (or row lock) so concurrent buyers can't both win."
+        "Two buyouts shared the same availability window, so both claimed the last listed item before stock changed."
     }
     fn packets(&self) -> &'static [&'static str] {
         &["Buyout { listing: Int, quantity: Int }"]
     }
     fn solution_script(&self) -> &'static str {
-        "batch {\n  send Buyout { listing: 21, quantity: 1 }\n  send Buyout { listing: 21, quantity: 1 }\n}\n"
+        "send_batch {\n  Buyout { listing: 21, quantity: 1 }\n  Buyout { listing: 21, quantity: 1 }\n}\n"
     }
     fn naive_script(&self) -> &'static str {
         "send Buyout { listing: 21, quantity: 1 }\nsleep 20\nsend Buyout { listing: 21, quantity: 1 }\n"

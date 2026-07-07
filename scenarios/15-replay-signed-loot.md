@@ -56,8 +56,7 @@ The same signed grant is redeemed three times.
 
 Opening the chest normally gives exactly one relic.
 
-## Defensive note
+## Exploit recap
 
-Signed payloads still need nonces or unique grant IDs with consumed-state
-tracking. Claims must be idempotent: replaying a valid old token should not
-create new rewards.
+The same signed loot grant was accepted more than once, turning one
+authorization into multiple claims.

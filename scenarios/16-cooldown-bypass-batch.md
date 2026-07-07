@@ -42,11 +42,11 @@ same-frame casts all see the skill as ready.
 ## Intended exploit
 
 ```
-batch {
-    send CastSkill { skill: 10, target: 1 }
-    send CastSkill { skill: 10, target: 1 }
-    send CastSkill { skill: 10, target: 1 }
-    send Attack { target: 1 }
+send_batch {
+    CastSkill { skill: 10, target: 1 }
+    CastSkill { skill: 10, target: 1 }
+    CastSkill { skill: 10, target: 1 }
+    Attack { target: 1 }
 }
 ```
 
@@ -64,7 +64,7 @@ send CastSkill { skill: 10, target: 1 }
 The boss retaliates at t=500ms before the second cast, and the shield is
 never fully broken.
 
-## Defensive note
+## Exploit recap
 
-Cooldowns should be reserved before effect application, or action processing
-should use per-action atomic state updates instead of end-of-frame commits.
+Multiple same-frame casts all saw the cooldown as ready, breaking the shield
+before the boss could retaliate.

@@ -54,7 +54,7 @@ send BuyItem { item: 6001 }
 
 The vendor rejects the purchase because the player has only 100 gold.
 
-## Defensive note
+## Exploit recap
 
-Use checked arithmetic and bounded money domain types. Reject impossible bank
-transfers before mutation, and keep balance checks and purchases transactional.
+A huge gold operation crossed the integer boundary and wrapped into a usable
+balance.

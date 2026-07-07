@@ -53,7 +53,7 @@ send Attack { target: 1 }
 
 Player attacks are absorbed by the aura forever.
 
-## Defensive note
+## Exploit recap
 
-Server commands must validate actor authority: ownership, faction permissions,
-AI commandability, encounter state, and command type.
+The command path let a neutral siege unit deal damage where direct friendly-fire
+rules would have blocked you.

@@ -36,7 +36,7 @@ impl Scenario for ScenarioImpl {
         "End with two Dragon Scales. You start with one."
     }
     fn lesson(&self) -> &'static str {
-        "The attach path and cancel path observed different draft states. Batching attach and cancel let the cancel return an attachment while suppressing the later inventory removal. Fix: commit inventory transfers atomically and make cancellation operate only on committed attachments."
+        "Attach and cancel observed different draft states, producing a returned attachment without spending the original."
     }
     fn packets(&self) -> &'static [&'static str] {
         &[
@@ -47,7 +47,7 @@ impl Scenario for ScenarioImpl {
         ]
     }
     fn solution_script(&self) -> &'static str {
-        "send CreateDraft { recipient: 0 }\nbatch {\n  send AttachItem { draft: 1, item: 1001 }\n  send CancelDraft { draft: 1 }\n}\n"
+        "send CreateDraft { recipient: 0 }\nsend_batch {\n  AttachItem { draft: 1, item: 1001 }\n  CancelDraft { draft: 1 }\n}\n"
     }
     fn naive_script(&self) -> &'static str {
         "send CreateDraft { recipient: 0 }\nsend AttachItem { draft: 1, item: 1001 }\nsleep 50\nsend CancelDraft { draft: 1 }\n"

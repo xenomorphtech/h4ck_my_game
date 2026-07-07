@@ -1,8 +1,8 @@
-#[allow(unused_imports)]
-use super::rules::{has, same_tick_count};
+use super::rules::same_tick_count;
 use super::{BlockedTile, Scenario, Scene, SceneEntity};
-#[allow(unused_imports)]
-use crate::engine::{field_i64, field_str, ClientEvent};
+use crate::engine::{field_i64, ClientEvent};
+use crate::protocol::PacketEvent;
+use serde_json::{json, Map};
 
 pub struct ScenarioImpl;
 
@@ -23,6 +23,74 @@ const ENTITIES: &[SceneEntity] = &[
     },
 ];
 const BLOCKED_TILES: &[BlockedTile] = &[];
+const PLAYER_ID: i64 = 0;
+const MONSTER_ID: i64 = 1;
+const MONSTER_HP: i64 = 120;
+const ATTACK_DAMAGE: i64 = 40;
+const RETALIATION_DAMAGE: i64 = 999;
+const RETALIATION_DELAY_MS: u64 = 250;
+
+fn damage_event(t: u64, source: i64, target: i64, amount: i64) -> PacketEvent {
+    PacketEvent {
+        t,
+        kind: "server".to_string(),
+        name: "Damage".to_string(),
+        fields: Map::from_iter([
+            ("source".to_string(), json!(source)),
+            ("target".to_string(), json!(target)),
+            ("amount".to_string(), json!(amount)),
+        ]),
+    }
+}
+
+fn death_event(t: u64, target: i64) -> PacketEvent {
+    PacketEvent {
+        t,
+        kind: "server".to_string(),
+        name: "Death".to_string(),
+        fields: Map::from_iter([("target".to_string(), json!(target))]),
+    }
+}
+
+fn combat_notifications(events: &[ClientEvent]) -> Vec<PacketEvent> {
+    let mut attacks: Vec<&ClientEvent> = events
+        .iter()
+        .filter(|event| event.name == "Attack" && field_i64(event, "target") == Some(MONSTER_ID))
+        .collect();
+    attacks.sort_by_key(|event| event.t);
+
+    let mut out = Vec::new();
+    let mut monster_hp = MONSTER_HP;
+    let mut idx = 0;
+
+    while idx < attacks.len() {
+        let t = attacks[idx].t;
+
+        while idx < attacks.len() && attacks[idx].t == t {
+            let damage = field_i64(attacks[idx], "power").unwrap_or(ATTACK_DAMAGE);
+            monster_hp -= damage;
+            out.push(damage_event(t, PLAYER_ID, MONSTER_ID, damage));
+            idx += 1;
+
+            if monster_hp <= 0 {
+                out.push(death_event(t, MONSTER_ID));
+                return out;
+            }
+        }
+
+        let retaliation_t = t.saturating_add(RETALIATION_DELAY_MS);
+        out.push(damage_event(
+            retaliation_t,
+            MONSTER_ID,
+            PLAYER_ID,
+            RETALIATION_DAMAGE,
+        ));
+        out.push(death_event(retaliation_t, PLAYER_ID));
+        return out;
+    }
+
+    out
+}
 
 impl Scenario for ScenarioImpl {
     fn id(&self) -> &'static str {
@@ -44,13 +112,13 @@ impl Scenario for ScenarioImpl {
         "Kill the monster."
     }
     fn lesson(&self) -> &'static str {
-        "The server resolved damage per received packet and let the monster retaliate between your hits. Delivering three attacks inside one tick collapsed the retaliation window. Fix: resolve an action and its reactions atomically on the server, not once per inbound packet."
+        "Three attacks landed in the same packet frame, collapsing the retaliation window before the monster could answer."
     }
     fn packets(&self) -> &'static [&'static str] {
         &["Attack { target: Int, power: Int = 40 }"]
     }
     fn solution_script(&self) -> &'static str {
-        "batch {\n  send Attack { target: 1 }\n  send Attack { target: 1 }\n  send Attack { target: 1 }\n}\n"
+        "send_batch {\n  Attack { target: 1 }\n  Attack { target: 1 }\n  Attack { target: 1 }\n}\n"
     }
     fn naive_script(&self) -> &'static str {
         "send Attack { target: 1 }\nsleep 100\nsend Attack { target: 1 }\nsleep 100\nsend Attack { target: 1 }\n"
@@ -64,5 +132,8 @@ impl Scenario for ScenarioImpl {
     }
     fn check_win(&self, events: &[ClientEvent]) -> bool {
         same_tick_count(events, "Attack", "target", 1, 3)
+    }
+    fn notifications(&self, events: &[ClientEvent]) -> Vec<PacketEvent> {
+        combat_notifications(events)
     }
 }

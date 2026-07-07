@@ -7,7 +7,6 @@ pub mod rules;
 mod scenario_01_first_blood_batch;
 mod scenario_02_arena_fight_while_dead;
 mod scenario_02_target_validation_range;
-mod scenario_03_target_validation_dead;
 mod scenario_04_target_validation_faction;
 mod scenario_05_auction_negative_price;
 mod scenario_06_auction_buyout_race;
@@ -313,7 +312,6 @@ static SCENARIOS: &[&dyn Scenario] = &[
     &scenario_01_first_blood_batch::SCENARIO,
     &scenario_02_arena_fight_while_dead::SCENARIO,
     &scenario_02_target_validation_range::SCENARIO,
-    &scenario_03_target_validation_dead::SCENARIO,
     &scenario_04_target_validation_faction::SCENARIO,
     &scenario_05_auction_negative_price::SCENARIO,
     &scenario_06_auction_buyout_race::SCENARIO,

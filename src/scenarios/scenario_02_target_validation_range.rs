@@ -79,7 +79,7 @@ impl Scenario for ScenarioImpl {
         "Open the gate with its lever. A guard holds the only corridor to it."
     }
     fn lesson(&self) -> &'static str {
-        "The client enforced the interaction range while the server trusted any Use it received. Acting on the target without walking there skipped the check that only ever lived client-side. Fix: validate distance server-side against the last authoritative position."
+        "The Use packet reached the lever directly; the route and range check only existed in the normal client flow."
     }
     fn packets(&self) -> &'static [&'static str] {
         &["Move { x: Int, y: Int }", "Use { target: Int }"]

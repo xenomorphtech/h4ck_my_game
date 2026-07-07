@@ -38,9 +38,9 @@ increasing deltas below 50ms.
 ## Intended exploit
 
 ```
-batch {
+send_batch {
     for i in 1..11 {
-        send Zap { target: 1, client_time_ms: 0 }
+        Zap { target: 1, client_time_ms: 0 }
     }
 }
 ```
@@ -58,7 +58,7 @@ for i in 1..11 {
 
 The crystal regenerates before enough damage accumulates.
 
-## Defensive note
+## Exploit recap
 
-Rate limits must be based on authoritative server time and monotonic per-action
-counters. Same-timestamp duplicate actions should still count as separate uses.
+Repeated packets shared the same client timestamp bucket, bypassing the
+limiter's distinct-time assumption.

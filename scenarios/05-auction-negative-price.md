@@ -53,8 +53,6 @@ send BuyListing { listing: 11, offered_price: 500 }
 
 The server rejects the purchase because the player has only 100 gold.
 
-## Defensive note
+## Exploit recap
 
-Use a single canonical money type, reject negative prices at schema validation,
-validate buyer balance and listing price in one transaction, and avoid mixed
-signed/unsigned conversions.
+A negative offer inverted the balance update, turning a purchase into a payout.

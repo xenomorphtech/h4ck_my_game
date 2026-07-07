@@ -50,7 +50,7 @@ impl Scenario for ScenarioImpl {
         "Create extra arrows from a single stack."
     }
     fn lesson(&self) -> &'static str {
-        "The stack split code accepted negative counts, increasing the source stack and creating an invalid destination. Fix: validate quantity ranges before all inventory mutations."
+        "A negative split count moved stack math in the wrong direction and created extra inventory value."
     }
     fn packets(&self) -> &'static [&'static str] {
         &[

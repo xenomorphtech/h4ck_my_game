@@ -154,16 +154,17 @@ This is what makes the game work. The runtime distinguishes between
 within a single simulation tick.
 
 ```
-batch {
-    send Attack { target: 1 }
-    send Attack { target: 1 }
-    send Attack { target: 1 }
+send_batch {
+    Attack { target: 1 }
+    Attack { target: 1 }
+    Attack { target: 1 }
 }                # all three flushed in the SAME tick (0 ms apart)
 ```
 
-- Bare `send` outside a `batch` flushes immediately (its own tick).
-- Inside `batch { ... }`, sends accumulate and flush atomically together
-  when the block closes — they arrive server-side in the same frame.
+- Bare `send` outside a `send_batch` flushes immediately (its own tick).
+- Inside `send_batch { ... }`, packet literal lines omit `send` and flush
+  atomically together when the block closes — they arrive server-side in the
+  same packet frame.
 - `at(t) { ... }` schedules a batch to flush at absolute virtual time `t` ms.
 - `parallel { a; b }` interleaves two logical timelines (advanced scenarios).
 
@@ -253,10 +254,10 @@ scenario "First Blood" {
 
 ### 4.2 The Intended Solution (author's reference)
 ```
-batch {
-    send Attack { target: 1 }
-    send Attack { target: 1 }
-    send Attack { target: 1 }
+send_batch {
+    Attack { target: 1 }
+    Attack { target: 1 }
+    Attack { target: 1 }
 }
 # monster takes 120 at t=0, dies. retaliation scheduled for t=250 never
 # matters because the scenario already resolved to WIN.
@@ -336,17 +337,17 @@ progression bugs.
 
 ```
 program     = { statement } ;
-statement   = let | assign | send | sleep | for | while | if
-            | batch | at | expr_stmt ;
+statement   = let | assign | send | send_batch | sleep | for | while | if
+            | at | expr_stmt ;
 
 let         = "let" [ "mut" ] ident "=" expr ;
 assign      = ident "=" expr ;
 send        = "send" packet ;
+send_batch  = "send_batch" "{" { packet | for } "}" ;
 sleep       = "sleep" expr ;
 for         = "for" ident "in" expr "{" { statement } "}" ;
 while       = "while" expr "{" { statement } "}" ;
 if          = "if" expr block [ "else" (if | block) ] ;
-batch       = "batch" block ;
 at          = "at" "(" expr ")" block ;
 block       = "{" { statement } "}" ;
 
@@ -368,8 +369,8 @@ literal     = int | float | string | bool | "(" ")" ;
 - Match-block scheduling: how do background `on` handlers order vs. main
   timeline when both act at the same `t`? (Proposal: main first, then handlers,
   stable by registration order.)
-- Should `batch` allow nested `sleep`? (Proposal: no — `sleep` inside `batch`
-  is a compile error; batches are instantaneous.)
+- Should `send_batch` allow nested `sleep`? (Proposal: no — `sleep` inside
+  `send_batch` is a compile error; batches are instantaneous.)
 - Scenario authoring: JSON vs. dedicated DSL? DSL reads better (section 4) but
   costs a second parser.
 - Multiplayer/adversarial scenarios later? (Two scripts vs. each other.)

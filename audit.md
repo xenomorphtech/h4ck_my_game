@@ -29,12 +29,6 @@
 - [x] Replace misleading Gate Key inventory if the puzzle is lever-based.
 - [x] Fix objective plural/singular if needed.
 
-### 03 — `03-target-validation-dead`
-- [x] Add a visible, spoiler-safe reason to attack the summon before the necromancer.
-- [ ] Reconcile docs with the implemented single-summon, Attack-only puzzle or implement the documented TargetHint puzzle.
-- [ ] Resolve stale-target vs same-tick-batch lesson/mechanic mismatch.
-- [x] Make target ids discoverable.
-
 ### 04 — `04-target-validation-faction`
 - [x] Make cannon/commander ids and allowed order action discoverable without exposing the bug.
 - [x] Add visible shield/aura or copy cue explaining direct attacks fail.

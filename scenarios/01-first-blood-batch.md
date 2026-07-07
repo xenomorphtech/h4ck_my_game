@@ -39,10 +39,10 @@ apply before any retaliation can fire.
 ## Intended exploit
 
 ```
-batch {
-    send Attack { target: 1 }
-    send Attack { target: 1 }
-    send Attack { target: 1 }
+send_batch {
+    Attack { target: 1 }
+    Attack { target: 1 }
+    Attack { target: 1 }
 }
 ```
 
@@ -61,7 +61,7 @@ for i in 1..4 {
 The first counterattack kills the player at t=250 before enough spaced attacks
 land.
 
-## Defensive note
+## Exploit recap
 
-Resolve combat in server-defined turns, cap same-frame action counts, or mark
-retaliation/death state transactionally before accepting additional attacks.
+Three attacks landed in the same packet frame, collapsing the retaliation window
+before the monster could answer.

@@ -50,7 +50,7 @@ impl Scenario for ScenarioImpl {
         "Keep your shield and receive the NPC's potion."
     }
     fn lesson(&self) -> &'static str {
-        "The trade confirmed against a snapshot while later same-frame removal changed the live offered item list. Fix: lock or snapshot-and-consume trade contents atomically at confirmation."
+        "The trade confirmed from one view of the offer while a same-frame removal changed the live item list."
     }
     fn packets(&self) -> &'static [&'static str] {
         &[
@@ -61,7 +61,7 @@ impl Scenario for ScenarioImpl {
         ]
     }
     fn solution_script(&self) -> &'static str {
-        "batch {\n  send OfferItem { trade: 41, item: 2001 }\n  send Ready { trade: 41, ready: true }\n  send Confirm { trade: 41 }\n  send RemoveItem { trade: 41, item: 2001 }\n}\n"
+        "send_batch {\n  OfferItem { trade: 41, item: 2001 }\n  Ready { trade: 41, ready: true }\n  Confirm { trade: 41 }\n  RemoveItem { trade: 41, item: 2001 }\n}\n"
     }
     fn naive_script(&self) -> &'static str {
         "send OfferItem { trade: 41, item: 2001 }\nsend Ready { trade: 41, ready: true }\nsend Confirm { trade: 41 }\n"

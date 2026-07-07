@@ -7,8 +7,8 @@ Assumption: Rust implementation, protocol data, and tests are the current source
 ## Global Findings
 
 1. Registered scenario count does not match markdown docs.
-   - `src/scenarios/mod.rs:312-336` registers 23 scenarios.
-   - `scenarios/README.md:25-46` lists 22 scenarios and does not include `02-arena-fight-while-dead`.
+   - `src/scenarios/mod.rs:312-336` registers 22 scenarios.
+   - `scenarios/README.md:25-45` lists 21 scenarios and does not include `02-arena-fight-while-dead`.
    - There is no `scenarios/02-arena-fight-while-dead.md`.
    - This also creates duplicate visible numbering: `02-arena-fight-while-dead` and `02-target-validation-range`.
 
@@ -38,12 +38,6 @@ Assumption: Rust implementation, protocol data, and tests are the current source
 
 - Map/setup mismatch: markdown places lever #7 at `(10, 0)` and describes guard lethal radius 4 (`scenarios/02-target-validation-range.md:30-32`), while the implementation places the lever at `(6, 2)`, gate at `(6, 3)`, and blocked corridor on row `y=3` (`src/scenarios/scenario_02_target_validation_range.rs:26-57`).
 - The markdown naive route walks along `y=0`; the visible implementation is a corridor around `y=3`.
-
-### 03 - `03-target-validation-dead`
-
-- Hard mismatch: markdown says the necromancer is shielded by four skeletons and uses `TargetHint` (`scenarios/03-target-validation-dead.md:9`, `scenarios/03-target-validation-dead.md:23`, `scenarios/03-target-validation-dead.md:31`, `scenarios/03-target-validation-dead.md:44`).
-- Runtime scene has one `Summon #2 (shield source)` and no target-hint packet in `packets()` (`src/scenarios/scenario_03_target_validation_dead.rs:23-56`).
-- The implementation's solution is concrete `Attack target 2` then three attacks on target 1; the markdown story still describes the older four-skeleton/hint design.
 
 ### 04 - `04-target-validation-faction`
 

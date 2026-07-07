@@ -33,10 +33,10 @@ bridge { x: 40..60, broken: true }
 
 ## Server rule / hidden bug
 
-Movement is mostly server-authoritative, but the interaction range check uses
-`client_x/client_y` from the `Interact` packet instead of the server's stored
-player position. This allows "telehacking": spoofing a temporary remote position
-only for the interaction.
+Movement normally tracks x=0 on the server, but the interaction range check uses
+`client_x/client_y` from the `Interact` packet instead of the stored player
+position. This allows "telehacking": spoofing a temporary remote position only
+for the interaction.
 
 ## Intended exploit
 
@@ -58,8 +58,7 @@ for x in 1..101 {
 
 Movement is blocked by the broken bridge.
 
-## Defensive note
+## Exploit recap
 
-Never authorize interactions from client-reported coordinates. Use the server's
-authoritative position and validate path, distance, line of sight, phase, and
-map instance before resolving the interaction.
+The interaction packet carried its own position, letting you activate the shrine
+without actually crossing.

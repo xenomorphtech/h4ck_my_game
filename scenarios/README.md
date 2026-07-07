@@ -13,7 +13,7 @@ Each scenario file follows the same structure:
 - Server rules (the bug — normally hidden from the player)
 - Intended exploit (author reference solution)
 - Naive attempt (why fair play fails)
-- Defensive note (the real-world fix — this is a training game)
+- Exploit recap (post-solve takeaway, no remediation tips)
 
 All scenarios are deterministic: seeded PRNG, virtual clock, no real I/O.
 See `../SPEC.md` for the engine, UI, and Netscript language reference.
@@ -24,7 +24,6 @@ See `../SPEC.md` for the engine, UI, and Netscript language reference.
 |---|------|----------|-----------|------------|
 | 01 | `01-first-blood-batch.md` | Combat | Per-hit retaliation scheduling | ★☆☆ |
 | 02 | `02-target-validation-range.md` | Target validation | Server trusts client range check | ★☆☆ |
-| 03 | `03-target-validation-dead.md` | Target validation | Stale target reference / no liveness check | ★☆☆ |
 | 04 | `04-target-validation-faction.md` | Target validation | Missing ownership/faction gate | ★★☆ |
 | 05 | `05-auction-negative-price.md` | Auction house | Unsigned/underflow on price field | ★★☆ |
 | 06 | `06-auction-buyout-race.md` | Auction house | TOCTOU on buyout vs. stock | ★★☆ |

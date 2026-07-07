@@ -44,13 +44,13 @@ impl Scenario for ScenarioImpl {
         "Collect three reward bundles."
     }
     fn lesson(&self) -> &'static str {
-        "Opening dispensed rewards before the chest was flagged empty, so simultaneous opens each saw it as full. Fix: flip the chest to looted atomically with the first successful open."
+        "Multiple opens hit the chest before its emptied state took effect, producing repeated rewards."
     }
     fn packets(&self) -> &'static [&'static str] {
         &["OpenChest { chest: Int }"]
     }
     fn solution_script(&self) -> &'static str {
-        "batch {\n  send OpenChest { chest: 81 }\n  send OpenChest { chest: 81 }\n  send OpenChest { chest: 81 }\n}\n"
+        "send_batch {\n  OpenChest { chest: 81 }\n  OpenChest { chest: 81 }\n  OpenChest { chest: 81 }\n}\n"
     }
     fn naive_script(&self) -> &'static str {
         "send OpenChest { chest: 81 }\nsleep 50\nsend OpenChest { chest: 81 }\nsleep 50\nsend OpenChest { chest: 81 }\n"

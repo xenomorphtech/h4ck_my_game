@@ -1,3 +1,4 @@
 /target/
 /.codebase-memory/
 /packet_hacker.sqlite3
+/packet_hacker.sqlite3-*

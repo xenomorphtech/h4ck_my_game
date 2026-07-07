@@ -44,7 +44,7 @@ impl Scenario for ScenarioImpl {
         "Take home the Phoenix Mount. It costs far more than you have."
     }
     fn lesson(&self) -> &'static str {
-        "The purchase deducted the offered price without asserting it was positive, so a negative price credited you gold. Fix: validate numeric bounds (price > 0) server-side before applying any balance change."
+        "A negative offer inverted the balance update, turning a purchase into a payout."
     }
     fn packets(&self) -> &'static [&'static str] {
         &["BuyListing { listing: Int, offered_price: Int }"]

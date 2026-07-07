@@ -39,9 +39,9 @@ quantity = 1 before either decrement is committed.
 ## Intended exploit
 
 ```
-batch {
-    send Buyout { listing: 21, quantity: 1 }
-    send Buyout { listing: 21, quantity: 1 }
+send_batch {
+    Buyout { listing: 21, quantity: 1 }
+    Buyout { listing: 21, quantity: 1 }
 }
 ```
 
@@ -57,7 +57,7 @@ send Buyout { listing: 21, quantity: 1 }
 
 The second request sees `ListingGone` and fails.
 
-## Defensive note
+## Exploit recap
 
-Lock the listing row or use an atomic compare-and-decrement. The check and the
-mutation must be one transaction with idempotent settlement.
+Two buyouts shared the same availability window, so both claimed the last listed
+item before stock changed.

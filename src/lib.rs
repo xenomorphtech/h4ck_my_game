@@ -16,6 +16,7 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use protocol::{ProgressResponse, RunScriptRequest};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub use engine::run_script;
@@ -93,6 +94,7 @@ async fn ws_handler(
 
 async fn handle_socket(socket: WebSocket, store: Store, user_id: String) {
     let (mut sender, mut receiver) = socket.split();
+    let mut scripts_by_scenario = HashMap::<String, String>::new();
     while let Some(Ok(message)) = receiver.next().await {
         let Message::Text(text) = message else {
             continue;
@@ -100,7 +102,17 @@ async fn handle_socket(socket: WebSocket, store: Store, user_id: String) {
 
         let result = match serde_json::from_str::<RunScriptRequest>(&text) {
             Ok(request) if request.message_type == "run_script" => {
-                run_script(&request.scenario_id, &request.script)
+                let script = if request.append {
+                    let script = scripts_by_scenario
+                        .entry(request.scenario_id.clone())
+                        .or_default();
+                    script.push_str(&request.script);
+                    script.clone()
+                } else {
+                    scripts_by_scenario.insert(request.scenario_id.clone(), request.script.clone());
+                    request.script.clone()
+                };
+                run_script(&request.scenario_id, &script)
             }
             Ok(request) => RunResult::error(
                 request.scenario_id,

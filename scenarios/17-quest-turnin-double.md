@@ -38,9 +38,9 @@ Item removal is deduplicated later, but reward grants are not.
 ## Intended exploit
 
 ```
-batch {
-    send TurnInQuest { quest: 61, item: 4001 }
-    send TurnInQuest { quest: 61, item: 4001 }
+send_batch {
+    TurnInQuest { quest: 61, item: 4001 }
+    TurnInQuest { quest: 61, item: 4001 }
 }
 ```
 
@@ -50,8 +50,7 @@ Both reward grants are queued before quest completion is committed.
 
 Turn in once: one reward chest and the quest becomes completed.
 
-## Defensive note
+## Exploit recap
 
-Quest completion should be idempotent. Mark completion or reserve the required
-item transactionally before queuing rewards, and enforce unique reward grants per
-player+quest.
+Two turn-ins shared the unfinished quest state and both produced rewards for the
+same item.

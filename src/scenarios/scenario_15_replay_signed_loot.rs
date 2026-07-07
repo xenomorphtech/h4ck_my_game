@@ -50,7 +50,7 @@ impl Scenario for ScenarioImpl {
         "Claim three relics from the chest."
     }
     fn lesson(&self) -> &'static str {
-        "The signed loot grant lacked a nonce/consume marker, so the same authorization could be replayed. Fix: bind signatures to unique nonces and mark grants consumed server-side."
+        "The same signed loot grant was accepted more than once, turning one authorization into multiple claims."
     }
     fn packets(&self) -> &'static [&'static str] {
         &[

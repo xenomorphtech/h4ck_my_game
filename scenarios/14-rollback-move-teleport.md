@@ -40,12 +40,12 @@ positions and only rolls back visually after interaction has already resolved.
 ## Intended exploit
 
 ```
-batch {
-    send MoveIntent { seq: 1, dx: 2, dy: 0 }
-    send MoveIntent { seq: 2, dx: 2, dy: 0 }
-    send MoveIntent { seq: 3, dx: 2, dy: 0 }
-    send MoveIntent { seq: 4, dx: 2, dy: 0 }
-    send Interact { target: 77 }
+send_batch {
+    MoveIntent { seq: 1, dx: 2, dy: 0 }
+    MoveIntent { seq: 2, dx: 2, dy: 0 }
+    MoveIntent { seq: 3, dx: 2, dy: 0 }
+    MoveIntent { seq: 4, dx: 2, dy: 0 }
+    Interact { target: 77 }
 }
 ```
 
@@ -55,8 +55,7 @@ The interaction resolves at the temporarily advanced position beyond the wall.
 
 Walking normally waits for acknowledgements and gets blocked at the wall.
 
-## Defensive note
+## Exploit recap
 
-Authoritative server movement must validate the full path and final position
-against current state before applying interactions. Do not let speculative
-positions authorize actions.
+Several move intents landed before collision state caught up, carrying the
+interaction through the wall.

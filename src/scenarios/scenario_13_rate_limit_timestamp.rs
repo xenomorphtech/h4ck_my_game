@@ -44,13 +44,13 @@ impl Scenario for ScenarioImpl {
         "Overload the crystal."
     }
     fn lesson(&self) -> &'static str {
-        "The rate limiter bucketed by client timestamp and failed to dedupe identical timestamps. Fix: rate-limit on server arrival/order, not attacker-controlled client time."
+        "Repeated packets shared the same client timestamp bucket, bypassing the limiter's distinct-time assumption."
     }
     fn packets(&self) -> &'static [&'static str] {
         &["Zap { target: Int, client_time_ms: Int }"]
     }
     fn solution_script(&self) -> &'static str {
-        "batch {\n  for i in 1..11 {\n    send Zap { target: 1, client_time_ms: 42 }\n  }\n}\n"
+        "send_batch {\n  for i in 1..11 {\n    Zap { target: 1, client_time_ms: 42 }\n  }\n}\n"
     }
     fn naive_script(&self) -> &'static str {
         "for i in 1..11 {\n  send Zap { target: 1, client_time_ms: i }\n  sleep 50\n}\n"

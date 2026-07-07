@@ -50,7 +50,7 @@ impl Scenario for ScenarioImpl {
         "Forge the Dragon Blade at the anvil."
     }
     fn lesson(&self) -> &'static str {
-        "The craft trusted a client-sent material_count instead of checking your actual inventory, so declaring zero materials still produced the item. Fix: make crafting server-authoritative — verify and consume real inventory materials on the server."
+        "The craft accepted client-declared material counts, so the recipe completed without spending real materials."
     }
     fn packets(&self) -> &'static [&'static str] {
         &["CraftItem { recipe: Int, material_count: Int }"]

@@ -50,13 +50,13 @@ impl Scenario for ScenarioImpl {
         "Claim two rewards for one quest item."
     }
     fn lesson(&self) -> &'static str {
-        "The turn-in queued reward creation before marking the quest complete. Same-frame requests both saw the quest as unfinished. Fix: make turn-in idempotent and mark completion atomically with reward creation."
+        "Two turn-ins shared the unfinished quest state and both produced rewards for the same item."
     }
     fn packets(&self) -> &'static [&'static str] {
         &["TurnInQuest { quest: Int, item: Int }"]
     }
     fn solution_script(&self) -> &'static str {
-        "batch {\n  send TurnInQuest { quest: 61, item: 4001 }\n  send TurnInQuest { quest: 61, item: 4001 }\n}\n"
+        "send_batch {\n  TurnInQuest { quest: 61, item: 4001 }\n  TurnInQuest { quest: 61, item: 4001 }\n}\n"
     }
     fn naive_script(&self) -> &'static str {
         "send TurnInQuest { quest: 61, item: 4001 }\n"

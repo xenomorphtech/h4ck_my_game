@@ -50,13 +50,13 @@ impl Scenario for ScenarioImpl {
         "Survive the poison cloud with too little gold."
     }
     fn lesson(&self) -> &'static str {
-        "The item appeared in inventory before the payment transaction committed. Same-frame use consumed it before affordability was finalized. Fix: commit purchase and debit atomically before exposing the item to use."
+        "The item became usable before payment fully settled, so same-frame use beat the debit."
     }
     fn packets(&self) -> &'static [&'static str] {
         &["BuyItem { item: Int }", "UseItem { item: Int }"]
     }
     fn solution_script(&self) -> &'static str {
-        "batch {\n  send BuyItem { item: 301 }\n  send UseItem { item: 301 }\n}\n"
+        "send_batch {\n  BuyItem { item: 301 }\n  UseItem { item: 301 }\n}\n"
     }
     fn naive_script(&self) -> &'static str {
         "send BuyItem { item: 301 }\n"

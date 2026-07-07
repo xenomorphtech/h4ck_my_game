@@ -41,11 +41,11 @@ snapshot, but inventory validation uses the final trade window.
 ## Intended exploit
 
 ```
-batch {
-    send OfferItem { trade: 41, item: 2001 }
-    send Ready     { trade: 41, ready: true }
-    send Confirm   { trade: 41 }
-    send RemoveItem { trade: 41, item: 2001 }
+send_batch {
+    OfferItem { trade: 41, item: 2001 }
+    Ready     { trade: 41, ready: true }
+    Confirm   { trade: 41 }
+    RemoveItem { trade: 41, item: 2001 }
 }
 ```
 
@@ -57,8 +57,7 @@ with the player because it was removed from the final trade contents.
 Confirming normally swaps the shield for the potion. Removing before confirming
 makes the NPC reject the trade.
 
-## Defensive note
+## Exploit recap
 
-Trades need a locked settlement snapshot and readiness invalidation on any offer
-change. Do not process remove/confirm in the same mutable frame without ordering
-or transaction boundaries.
+The trade confirmed from one view of the offer while a same-frame removal
+changed the live item list.
