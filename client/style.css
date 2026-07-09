@@ -73,6 +73,26 @@ aside {
   margin-top: 6px;
   font-size: 11px;
 }
+.scenario.upcoming {
+  opacity: 0.48;
+  color: #93a4b8;
+  background: #111827;
+  border-color: #243043;
+  cursor: not-allowed;
+}
+.scenario.upcoming::after {
+  content: "upcoming";
+  display: inline-block;
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 999px;
+  padding: 1px 6px;
+  margin-top: 6px;
+  font-size: 11px;
+}
+.scenario:disabled {
+  pointer-events: none;
+}
 .scenario small { display: block; color: #94a3b8; margin-top: 3px; }
 #stage { padding: 14px; overflow: auto; min-width: 0; }
 .stage-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

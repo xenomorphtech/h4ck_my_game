@@ -1034,6 +1034,14 @@ fn frontend_console_groups_script_packets_result_and_events_as_tabs() {
         "console tabs should be interactive"
     );
     assert!(
+        app_js.contains("function handleSocketMessage")
+            && app_js.contains("message.type === 'challenge_state'")
+            && app_js.contains("button.classList.toggle('upcoming', !state.enabled)")
+            && app_js.contains("button.disabled = !state.enabled")
+            && app_js.contains("Number(!a.state.completed) - Number(!b.state.completed)"),
+        "frontend should render server challenge state with disabled upcoming puzzles sorted below completed ones"
+    );
+    assert!(
         !app_js.contains("activateConsoleTab('result-tab')"),
         "receiving a run result should not steal focus from the current console tab"
     );
@@ -1042,7 +1050,8 @@ fn frontend_console_groups_script_packets_result_and_events_as_tabs() {
             && style_css.contains(".console-tab.active")
             && style_css.contains(".console-pane")
             && style_css.contains(".syntax-scroll")
-            && style_css.contains(".syntax-section"),
+            && style_css.contains(".syntax-section")
+            && style_css.contains(".scenario.upcoming"),
         "tab dock and syntax reference should have dedicated layout styles"
     );
 }
@@ -1448,6 +1457,9 @@ async fn websocket_accepts_run_script_and_returns_run_result() {
     });
 
     let (mut socket, _) = connect_async(format!("ws://{addr}/ws")).await.unwrap();
+    let initial: Value =
+        serde_json::from_str(&socket.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
+    assert_eq!(initial["type"], "challenge_state");
     socket
         .send(Message::Text(
             json!({
@@ -1485,6 +1497,9 @@ async fn websocket_packet_actions_return_stateful_server_notifications() {
     });
 
     let (mut socket, _) = connect_async(format!("ws://{addr}/ws")).await.unwrap();
+    let initial: Value =
+        serde_json::from_str(&socket.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
+    assert_eq!(initial["type"], "challenge_state");
     socket
         .send(Message::Text(
             json!({
@@ -1548,6 +1563,72 @@ async fn websocket_packet_actions_return_stateful_server_notifications() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn websocket_streams_challenge_state_on_connect_and_after_completion() {
+    let store = Store::memory().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server_store = store.clone();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app_with_store(server_store))
+            .await
+            .unwrap();
+    });
+
+    let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
+    request
+        .headers_mut()
+        .insert("Cookie", "ph_uid=state-user".parse().unwrap());
+    let (mut socket, _) = connect_async(request).await.unwrap();
+
+    let initial: Value =
+        serde_json::from_str(&socket.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
+    assert_eq!(initial["type"], "challenge_state");
+    let initial_challenges = initial["challenges"].as_array().unwrap();
+    assert!(initial_challenges.iter().any(|challenge| {
+        challenge["id"] == "01-first-blood-batch"
+            && challenge["completed"] == false
+            && challenge["enabled"] == false
+            && challenge["status"] == "upcoming"
+    }));
+
+    socket
+        .send(Message::Text(
+            json!({
+                "type": "run_script",
+                "scenario_id": "01-first-blood-batch",
+                "script": "send_batch {\n  Attack { target: 1 }\n  Attack { target: 1 }\n  Attack { target: 1 }\n}\n"
+            })
+            .to_string(),
+        ))
+        .await
+        .unwrap();
+
+    let result: Value =
+        serde_json::from_str(&socket.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
+    assert_eq!(result["type"], "run_result");
+    assert_eq!(result["outcome"], "win");
+
+    let updated: Value =
+        serde_json::from_str(&socket.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
+    assert_eq!(updated["type"], "challenge_state");
+    let updated_challenges = updated["challenges"].as_array().unwrap();
+    assert!(updated_challenges.iter().any(|challenge| {
+        challenge["id"] == "01-first-blood-batch"
+            && challenge["completed"] == true
+            && challenge["enabled"] == true
+            && challenge["status"] == "completed"
+    }));
+    assert!(updated_challenges.iter().any(|challenge| {
+        challenge["id"] == "02-arena-fight-while-dead"
+            && challenge["completed"] == false
+            && challenge["enabled"] == false
+            && challenge["status"] == "upcoming"
+    }));
+
+    server.abort();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn websocket_records_completed_puzzle_for_cookie_user() {
     let store = Store::memory().unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1564,6 +1645,9 @@ async fn websocket_records_completed_puzzle_for_cookie_user() {
         .headers_mut()
         .insert("Cookie", "ph_uid=socket-user".parse().unwrap());
     let (mut socket, _) = connect_async(request).await.unwrap();
+    let initial: Value =
+        serde_json::from_str(&socket.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
+    assert_eq!(initial["type"], "challenge_state");
     socket
         .send(Message::Text(
             json!({

@@ -5,6 +5,7 @@ let renderer = null;
 let combat = null;
 let completed = new Set();
 let actionSessionStarted = false;
+let challengeStates = new Map();
 // Client-side mirrors of the server's authoritative market/mail state. They are
 // only ever refreshed from the scenario payload or from server notification
 // events in a run result -- never mutated speculatively by a click handler.
@@ -51,49 +52,102 @@ async function loadScenarios() {
       $('scene-status').textContent = `blocked tile ${action.x}, ${action.y}: ${action.reason}`;
     }
   };
-  const [scenarioPayload] = await Promise.all([
+  const [scenarioPayload, progress] = await Promise.all([
     fetch('/api/scenarios').then((r) => r.json()),
     loadProgress(),
   ]);
   scenarios = scenarioPayload;
+  applyProgressCompleted(progress.completed || []);
+  ensureSocket();
+}
+
+function renderScenarioList() {
   const list = $('scenario-list');
   list.innerHTML = '';
-  for (const scenario of scenarios) {
+  const ordered = scenarios
+    .map((scenario, index) => ({ scenario, index, state: scenarioState(scenario) }))
+    .sort((a, b) => {
+      const rank = Number(!a.state.completed) - Number(!b.state.completed);
+      return rank || a.index - b.index;
+    });
+  for (const { scenario, state } of ordered) {
     const button = document.createElement('button');
     button.className = 'scenario';
+    button.classList.toggle('completed', state.completed);
+    button.classList.toggle('upcoming', !state.enabled);
+    button.classList.toggle('active', selected?.id === scenario.id);
+    button.disabled = !state.enabled;
     button.dataset.id = scenario.id;
-    button.innerHTML = `<strong>${scenario.title}</strong><small>${scenario.category} · ${scenario.difficulty}</small>`;
+    const status = state.completed ? 'complete' : 'upcoming';
+    button.innerHTML = `<strong>${scenario.title}</strong><small>${scenario.category} · ${scenario.difficulty} · ${status}</small>`;
     button.onclick = () => selectScenario(scenario);
     list.appendChild(button);
   }
-  renderCompletedBadges();
-  if (scenarios[0]) selectScenario(scenarios[0]);
 }
 
 async function loadProgress() {
   const progress = await fetch('/api/progress').then((r) => r.json());
-  completed = new Set(progress.completed || []);
-  renderCompletedBadges();
+  applyProgressCompleted(progress.completed || []);
   return progress;
 }
 
-function renderCompletedBadges() {
+function applyProgressCompleted(completedIds) {
+  completed = new Set(completedIds || []);
+  challengeStates = new Map(scenarios.map((scenario) => {
+    const done = completed.has(scenario.id);
+    return [scenario.id, {
+      id: scenario.id,
+      enabled: done,
+      completed: done,
+      status: done ? 'completed' : 'upcoming',
+    }];
+  }));
+  renderScenarioList();
+  reconcileSelectedScenario();
+}
+
+function applyChallengeState(message) {
+  const states = message.challenges || [];
+  challengeStates = new Map(states.map((state) => [state.id, state]));
+  completed = new Set(states.filter((state) => state.completed).map((state) => state.id));
+  renderScenarioList();
+  reconcileSelectedScenario();
+}
+
+function scenarioState(scenario) {
+  const state = challengeStates.get(scenario.id);
+  if (state) return state;
+  const done = completed.has(scenario.id);
+  return {
+    id: scenario.id,
+    enabled: done,
+    completed: done,
+    status: done ? 'completed' : 'upcoming',
+  };
+}
+
+function reconcileSelectedScenario() {
+  if (!scenarios.length) return;
+  if (selected && scenarioState(selected).enabled) {
+    updateScenarioActiveState();
+    return;
+  }
+  const next = scenarios.find((scenario) => scenarioState(scenario).enabled);
+  if (next) selectScenario(next);
+  else showNoEnabledScenario();
+}
+
+function updateScenarioActiveState() {
   document.querySelectorAll('.scenario').forEach((el) => {
-    const done = completed.has(el.dataset.id);
-    const scenario = scenarios.find((item) => item.id === el.dataset.id);
-    const label = scenario?.title || 'Puzzle';
-    el.classList.toggle('completed', done);
-    el.setAttribute('aria-label', done ? `${label} completed` : label);
+    el.classList.toggle('active', selected?.id === el.dataset.id);
   });
 }
 
 function selectScenario(scenario) {
+  if (!scenario || !scenarioState(scenario).enabled) return;
   selected = scenario;
   actionSessionStarted = false;
-  document.querySelectorAll('.scenario').forEach((el) => {
-    el.classList.toggle('active', el.dataset.id === scenario.id);
-  });
-  renderCompletedBadges();
+  updateScenarioActiveState();
   $('scenario-title').textContent = scenario.title;
   $('scenario-meta').textContent = `${scenario.category} · ${scenario.difficulty}`;
   $('objective').textContent = scenario.objective;
@@ -109,6 +163,33 @@ function selectScenario(scenario) {
   combat.setScenario(scenario);
   renderSystemViews(scenario);
   renderInventory(scenario.inventory || []);
+  $('script').disabled = false;
+  $('run').disabled = false;
+  $('reset').disabled = false;
+  activateConsoleTab('script-tab');
+}
+
+function showNoEnabledScenario() {
+  selected = null;
+  updateScenarioActiveState();
+  $('scenario-title').textContent = 'No enabled challenges';
+  $('scenario-meta').textContent = 'upcoming';
+  $('objective').textContent = 'Incomplete challenges are upcoming until the server enables them.';
+  $('packets').textContent = '';
+  $('script').value = '';
+  $('script').disabled = true;
+  $('run').disabled = true;
+  $('reset').disabled = true;
+  $('selected-id').textContent = '';
+  $('result').textContent = '';
+  $('events').innerHTML = '';
+  $('lesson').classList.add('hidden');
+  $('lesson-text').textContent = '';
+  $('scene-status').textContent = 'No enabled challenge selected';
+  renderer.setScene({ template: 'default', entities: [], blocked_tiles: [] });
+  combat.setScenario(null);
+  renderSystemViews({});
+  renderInventory([]);
   activateConsoleTab('script-tab');
 }
 
@@ -371,8 +452,16 @@ function ensureSocket() {
   socket.onopen = () => $('connection').textContent = 'connected';
   socket.onclose = () => $('connection').textContent = 'disconnected';
   socket.onerror = () => $('connection').textContent = 'socket error';
-  socket.onmessage = (event) => renderResult(JSON.parse(event.data));
+  socket.onmessage = (event) => handleSocketMessage(JSON.parse(event.data));
   return socket;
+}
+
+function handleSocketMessage(message) {
+  if (message.type === 'challenge_state') {
+    applyChallengeState(message);
+    return;
+  }
+  renderResult(message);
 }
 
 function runSelected() {
@@ -403,8 +492,7 @@ function sendScript(script, statusText, append = false) {
 function renderResult(result) {
   if (result.outcome === 'win') {
     completed.add(result.scenario_id);
-    renderCompletedBadges();
-    loadProgress().catch(() => {});
+    applyProgressCompleted(Array.from(completed));
   }
 
   $('result').className = result.outcome;

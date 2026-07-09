@@ -14,9 +14,9 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use futures_util::{SinkExt, StreamExt};
-use protocol::{ProgressResponse, RunScriptRequest};
-use std::collections::HashMap;
+use futures_util::{stream::SplitSink, SinkExt, StreamExt};
+use protocol::{ChallengeState, ChallengeStateMessage, ProgressResponse, RunScriptRequest};
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub use engine::run_script;
@@ -95,6 +95,9 @@ async fn ws_handler(
 async fn handle_socket(socket: WebSocket, store: Store, user_id: String) {
     let (mut sender, mut receiver) = socket.split();
     let mut scripts_by_scenario = HashMap::<String, String>::new();
+    if !send_challenge_state(&mut sender, &store, &user_id).await {
+        return;
+    }
     while let Some(Ok(message)) = receiver.next().await {
         let Message::Text(text) = message else {
             continue;
@@ -121,7 +124,8 @@ async fn handle_socket(socket: WebSocket, store: Store, user_id: String) {
             Err(err) => RunResult::error("".to_string(), format!("invalid json: {err}")),
         };
 
-        if result.outcome == protocol::Outcome::Win {
+        let completed = result.outcome == protocol::Outcome::Win;
+        if completed {
             let _ = store.mark_completed(&user_id, &result.scenario_id);
         }
 
@@ -130,6 +134,44 @@ async fn handle_socket(socket: WebSocket, store: Store, user_id: String) {
                 break;
             }
         }
+
+        if completed && !send_challenge_state(&mut sender, &store, &user_id).await {
+            break;
+        }
+    }
+}
+
+async fn send_challenge_state(
+    sender: &mut SplitSink<WebSocket, Message>,
+    store: &Store,
+    user_id: &str,
+) -> bool {
+    let Ok(completed) = store.completed_ids(user_id) else {
+        return true;
+    };
+    let message = challenge_state_message(&completed);
+    let Ok(text) = serde_json::to_string(&message) else {
+        return true;
+    };
+    sender.send(Message::Text(text)).await.is_ok()
+}
+
+fn challenge_state_message(completed: &[String]) -> ChallengeStateMessage {
+    let completed = completed.iter().map(String::as_str).collect::<HashSet<_>>();
+    ChallengeStateMessage {
+        message_type: "challenge_state".to_string(),
+        challenges: all_scenarios()
+            .iter()
+            .map(|scenario| {
+                let done = completed.contains(scenario.id());
+                ChallengeState {
+                    id: scenario.id().to_string(),
+                    enabled: done,
+                    completed: done,
+                    status: if done { "completed" } else { "upcoming" }.to_string(),
+                }
+            })
+            .collect(),
     }
 }
 

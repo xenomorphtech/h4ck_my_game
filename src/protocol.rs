@@ -62,6 +62,21 @@ pub struct ProgressResponse {
     pub completed: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ChallengeStateMessage {
+    #[serde(rename = "type")]
+    pub message_type: String,
+    pub challenges: Vec<ChallengeState>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChallengeState {
+    pub id: String,
+    pub enabled: bool,
+    pub completed: bool,
+    pub status: String,
+}
+
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct InventoryItem {
     pub name: &'static str,
