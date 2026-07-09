@@ -52,6 +52,9 @@ impl Scenario for ScenarioImpl {
     fn naive_script(&self) -> &'static str {
         "send CreateDraft { recipient: 0 }\nsend AttachItem { draft: 1, item: 1001 }\nsleep 50\nsend CancelDraft { draft: 1 }\n"
     }
+    fn upcoming(&self) -> bool {
+        true
+    }
     fn scene(&self) -> Scene {
         Scene {
             template: "postoffice",

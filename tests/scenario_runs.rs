@@ -36,6 +36,18 @@ const README_SCENARIO_IDS: [&str; 22] = [
     "22-crafting-clientside-materials",
 ];
 
+const STABLE_SCENARIO_IDS: [&str; 9] = [
+    "01-first-blood-batch",
+    "02-arena-fight-while-dead",
+    "02-target-validation-range",
+    "05-auction-negative-price",
+    "06-auction-buyout-race",
+    "07-auction-cancel-refund-dupe",
+    "16-cooldown-bypass-batch",
+    "17-quest-turnin-double",
+    "22-crafting-clientside-materials",
+];
+
 #[test]
 fn scenario_registry_matches_readme_index() {
     let actual = all_scenarios()
@@ -45,6 +57,30 @@ fn scenario_registry_matches_readme_index() {
     let expected = README_SCENARIO_IDS.into_iter().collect::<BTreeSet<_>>();
 
     assert_eq!(actual, expected);
+}
+
+#[test]
+fn stable_scenarios_match_local_completed_quality_set() {
+    let stable = all_scenarios()
+        .iter()
+        .filter(|scenario| !scenario.upcoming())
+        .map(|scenario| scenario.id())
+        .collect::<BTreeSet<_>>();
+    let expected_stable = STABLE_SCENARIO_IDS.into_iter().collect::<BTreeSet<_>>();
+
+    assert_eq!(stable, expected_stable);
+
+    let upcoming = all_scenarios()
+        .iter()
+        .filter(|scenario| scenario.upcoming())
+        .map(|scenario| scenario.id())
+        .collect::<BTreeSet<_>>();
+    let expected_upcoming = README_SCENARIO_IDS
+        .into_iter()
+        .filter(|id| !expected_stable.contains(id))
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(upcoming, expected_upcoming);
 }
 
 #[test]
@@ -1048,8 +1084,9 @@ fn frontend_console_groups_script_packets_result_and_events_as_tabs() {
             && html.contains("<script type=\"module\" src=\"/client/app.js\"></script>")
             && app_js.contains("button.classList.toggle('upcoming', state.upcoming)")
             && app_js.contains("button.disabled = !state.enabled")
+            && app_js.contains("Number(a.state.upcoming) - Number(b.state.upcoming)")
             && app_js.contains("Number(!a.state.completed) - Number(!b.state.completed)"),
-        "frontend should use local wasm plus localStorage completion state and render disabled upcoming puzzles sorted below completed ones"
+        "frontend should use local wasm plus localStorage completion state and prioritize stable puzzles before enabled upcoming ones"
     );
     assert!(
         !app_js.contains("activateConsoleTab('result-tab')"),
@@ -1142,12 +1179,15 @@ async fn api_scenarios_lists_all_documented_ids() {
     let expected = README_SCENARIO_IDS.into_iter().collect::<BTreeSet<_>>();
 
     assert_eq!(actual, expected);
-    assert!(
-        scenarios
-            .iter()
-            .all(|scenario| scenario["upcoming"] == false),
-        "all current scenarios should be unflagged as upcoming metadata"
-    );
+    let stable = STABLE_SCENARIO_IDS.into_iter().collect::<BTreeSet<_>>();
+    for scenario in scenarios {
+        let id = scenario["id"].as_str().unwrap();
+        assert_eq!(
+            scenario["upcoming"].as_bool(),
+            Some(!stable.contains(id)),
+            "{id} upcoming metadata should match the stable scenario set"
+        );
+    }
 }
 
 #[tokio::test]
@@ -1637,6 +1677,13 @@ async fn websocket_streams_challenge_state_on_connect_and_after_completion() {
             && challenge["enabled"] == true
             && challenge["upcoming"] == false
             && challenge["status"] == "available"
+    }));
+    assert!(initial_challenges.iter().any(|challenge| {
+        challenge["id"] == "04-target-validation-faction"
+            && challenge["completed"] == false
+            && challenge["enabled"] == true
+            && challenge["upcoming"] == true
+            && challenge["status"] == "upcoming"
     }));
 
     socket

@@ -286,7 +286,8 @@ pub trait Scenario: Sync {
     fn packets(&self) -> &'static [&'static str];
     fn solution_script(&self) -> &'static str;
     fn naive_script(&self) -> &'static str;
-    /// Release metadata. Upcoming scenarios are listed but not playable yet.
+    /// Release metadata. Upcoming scenarios are playable but still marked as
+    /// lower-confidence content in the UI.
     fn upcoming(&self) -> bool {
         false
     }

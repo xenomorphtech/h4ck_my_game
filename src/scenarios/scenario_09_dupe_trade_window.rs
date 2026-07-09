@@ -66,6 +66,9 @@ impl Scenario for ScenarioImpl {
     fn naive_script(&self) -> &'static str {
         "send OfferItem { trade: 41, item: 2001 }\nsend Ready { trade: 41, ready: true }\nsend Confirm { trade: 41 }\n"
     }
+    fn upcoming(&self) -> bool {
+        true
+    }
     fn scene(&self) -> Scene {
         Scene {
             template: "trade",

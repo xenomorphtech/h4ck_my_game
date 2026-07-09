@@ -55,6 +55,9 @@ impl Scenario for ScenarioImpl {
     fn naive_script(&self) -> &'static str {
         "for i in 1..11 {\n  send Zap { target: 1, client_time_ms: i }\n  sleep 50\n}\n"
     }
+    fn upcoming(&self) -> bool {
+        true
+    }
     fn scene(&self) -> Scene {
         Scene {
             template: "cavern",

@@ -59,7 +59,7 @@ pub fn challenge_state_message(completed: &[String]) -> ChallengeStateMessage {
                 let upcoming = scenario.upcoming();
                 ChallengeState {
                     id: scenario.id().to_string(),
-                    enabled: done || !upcoming,
+                    enabled: true,
                     completed: done,
                     upcoming,
                     status: if done {

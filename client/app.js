@@ -75,8 +75,9 @@ function renderScenarioList() {
   const ordered = scenarios
     .map((scenario, index) => ({ scenario, index, state: scenarioState(scenario) }))
     .sort((a, b) => {
-      const rank = Number(!a.state.completed) - Number(!b.state.completed);
-      return rank || a.index - b.index;
+      const releaseRank = Number(a.state.upcoming) - Number(b.state.upcoming);
+      const progressRank = Number(!a.state.completed) - Number(!b.state.completed);
+      return releaseRank || progressRank || a.index - b.index;
     });
   for (const { scenario, state } of ordered) {
     const button = document.createElement('button');
@@ -86,7 +87,9 @@ function renderScenarioList() {
     button.classList.toggle('active', selected?.id === scenario.id);
     button.disabled = !state.enabled;
     button.dataset.id = scenario.id;
-    const flags = state.completed ? ['complete'] : state.upcoming ? ['upcoming'] : [];
+    const flags = [];
+    if (state.completed) flags.push('complete');
+    if (state.upcoming) flags.push('upcoming');
     const meta = [scenario.category, scenario.difficulty, ...flags].join(' · ');
     button.innerHTML = `<strong>${scenario.title}</strong><small>${meta}</small>`;
     button.onclick = () => selectScenario(scenario);
@@ -114,7 +117,7 @@ function applyProgressCompleted(completedIds) {
     const upcoming = Boolean(scenario.upcoming);
     return [scenario.id, {
       id: scenario.id,
-      enabled: done || !upcoming,
+      enabled: true,
       completed: done,
       upcoming,
       status: done ? 'completed' : upcoming ? 'upcoming' : 'available',
@@ -178,7 +181,7 @@ function scenarioState(scenario) {
   const upcoming = Boolean(scenario.upcoming);
   return {
     id: scenario.id,
-    enabled: done || !upcoming,
+    enabled: true,
     completed: done,
     upcoming,
     status: done ? 'completed' : upcoming ? 'upcoming' : 'available',

@@ -64,6 +64,9 @@ impl Scenario for ScenarioImpl {
     fn naive_script(&self) -> &'static str {
         "send OpenChest { chest: 51 }\nsend ClaimLoot { chest: 51, grant_id: 1 }\n"
     }
+    fn upcoming(&self) -> bool {
+        true
+    }
     fn scene(&self) -> Scene {
         Scene {
             template: "vault",

@@ -64,6 +64,9 @@ impl Scenario for ScenarioImpl {
     fn naive_script(&self) -> &'static str {
         "send SplitStack { slot: 0, count: 9 }\n"
     }
+    fn upcoming(&self) -> bool {
+        true
+    }
     fn scene(&self) -> Scene {
         Scene {
             template: "inventory",

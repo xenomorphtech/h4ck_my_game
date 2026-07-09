@@ -55,6 +55,9 @@ impl Scenario for ScenarioImpl {
     fn naive_script(&self) -> &'static str {
         "send OpenChest { chest: 81 }\nsleep 50\nsend OpenChest { chest: 81 }\nsleep 50\nsend OpenChest { chest: 81 }\n"
     }
+    fn upcoming(&self) -> bool {
+        true
+    }
     fn scene(&self) -> Scene {
         Scene {
             template: "vault",

@@ -80,6 +80,9 @@ impl Scenario for ScenarioImpl {
     fn naive_script(&self) -> &'static str {
         "for x in 1..8 {\n  send Move { x: x, y: 3 }\n  sleep 20\n}\n"
     }
+    fn upcoming(&self) -> bool {
+        true
+    }
     fn scene(&self) -> Scene {
         Scene {
             template: "bridge",

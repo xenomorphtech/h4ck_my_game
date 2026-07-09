@@ -80,6 +80,9 @@ impl Scenario for ScenarioImpl {
     fn naive_script(&self) -> &'static str {
         "send MoveIntent { seq: 1, dx: 1, dy: 0 }\nsleep 100\nsend Interact { target: 77 }\n"
     }
+    fn upcoming(&self) -> bool {
+        true
+    }
     fn scene(&self) -> Scene {
         Scene {
             template: "ruins",
