@@ -74,6 +74,7 @@ pub struct ChallengeState {
     pub id: String,
     pub enabled: bool,
     pub completed: bool,
+    pub upcoming: bool,
     pub status: String,
 }
 
@@ -155,6 +156,8 @@ pub struct ScenarioSummary {
     pub packets: &'static [&'static str],
     /// The naive starting script the player edits. Never the solution.
     pub example_script: &'static str,
+    /// Listed but not playable yet. All current scenarios are available.
+    pub upcoming: bool,
     pub scene: Scene,
     /// Initial player inventory displayed by the reusable inventory UI component.
     pub inventory: &'static [InventoryItem],
@@ -179,6 +182,7 @@ impl From<&dyn Scenario> for ScenarioSummary {
             objective: scenario.objective(),
             packets: scenario.packets(),
             example_script: scenario.naive_script(),
+            upcoming: scenario.upcoming(),
             scene: scenario.scene(),
             inventory: inventory_for(scenario.id()),
             skills: skills_for(scenario.id()),

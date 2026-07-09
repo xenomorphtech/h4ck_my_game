@@ -12,7 +12,7 @@
       <button id="toggle-drawer" title="Show/hide puzzles" aria-label="Toggle puzzle list">☰</button>
       <h1>Packet Hacker</h1>
     </div>
-    <span id="connection" class="pill">disconnected</span>
+    <span id="connection" class="pill">loading wasm</span>
   </header>
   <main>
     <aside id="scenario-list" aria-label="Scenario list"></aside>
@@ -173,6 +173,6 @@ send Attack { target: 1 }</pre>
   </section>
   <script src="/client/scene.js"></script>
   <script src="/client/combat.js"></script>
-  <script src="/client/app.js"></script>
+  <script type="module" src="/client/app.js"></script>
 </body>
 </html>

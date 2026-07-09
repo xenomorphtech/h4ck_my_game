@@ -286,6 +286,10 @@ pub trait Scenario: Sync {
     fn packets(&self) -> &'static [&'static str];
     fn solution_script(&self) -> &'static str;
     fn naive_script(&self) -> &'static str;
+    /// Release metadata. Upcoming scenarios are listed but not playable yet.
+    fn upcoming(&self) -> bool {
+        false
+    }
     fn scene(&self) -> Scene;
     fn check_win(&self, events: &[ClientEvent]) -> bool;
     /// Server-side notifications the world emits in response to the player's

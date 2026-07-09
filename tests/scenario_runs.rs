@@ -586,11 +586,11 @@ fn market_cancel_button_sends_packet_and_applies_server_notifications() {
         "market/mail action buttons should submit their packet directly without appending to the editor"
     );
     assert!(
-        app_js.contains("append,")
-            && app_js
-                .contains("sendScript(`${line}\\n`, `sent packet: ${line}`, actionSessionStarted)")
+        app_js.contains("sendScript(`${line}\\n`, `sent packet: ${line}`, actionSessionStarted)")
+            && app_js.contains("game.run_script_json(selected.id, script, append)")
+            && app_js.contains("game.reset_script_session(selected.id)")
             && app_js.contains("actionSessionStarted = false"),
-        "packet-button sends should preserve websocket world state without mutating the editor"
+        "packet-button sends should preserve local wasm world state without mutating the editor"
     );
     assert!(
         app_js.contains("function applyServerNotifications"),
@@ -943,7 +943,7 @@ fn frontend_combat_renders_backend_packets_instead_of_inventing_retaliation() {
         combat_js.contains("packetForAction")
             && app_js.contains("const combatPacket = combat.packetForAction(action)")
             && app_js.contains("sendPacketScript(combatPacket)"),
-        "clicking a monster should send the real Attack packet to the backend"
+        "clicking a monster should send the real Attack packet to the Rust engine"
     );
     assert!(
         !combat_js.contains("run the script to resolve combat on the server"),
@@ -951,7 +951,7 @@ fn frontend_combat_renders_backend_packets_instead_of_inventing_retaliation() {
     );
     assert!(
         combat_js.contains("applyServerDamage") && combat_js.contains("applyServerDeath"),
-        "combat HUD should update from authoritative server Damage/Death packets"
+        "combat HUD should update from authoritative Damage/Death packets"
     );
     assert!(
         !combat_js.contains("setTimeout")
@@ -963,7 +963,7 @@ fn frontend_combat_renders_backend_packets_instead_of_inventing_retaliation() {
         scene_js.contains("addServerCombatStrike")
             && scene_js.contains("ev.kind === 'server'")
             && scene_js.contains("ev.name === 'Damage'"),
-        "scene renderer should draw combat strikes from authoritative server Damage packets"
+        "scene renderer should draw combat strikes from authoritative Damage packets"
     );
     assert!(
         !scene_js.contains("now + 250")
@@ -1034,12 +1034,22 @@ fn frontend_console_groups_script_packets_result_and_events_as_tabs() {
         "console tabs should be interactive"
     );
     assert!(
-        app_js.contains("function handleSocketMessage")
-            && app_js.contains("message.type === 'challenge_state'")
-            && app_js.contains("button.classList.toggle('upcoming', !state.enabled)")
+        app_js.contains("import initWasm, { WasmGame } from './pkg/packet_hacker.js'")
+            && app_js.contains("game = new WasmGame()")
+            && app_js.contains("wasmGame.scenarios_json()")
+            && app_js.contains("game.run_script_json(selected.id, script, append)")
+            && app_js.contains("game.challenge_state_json(completedDatabaseJson())")
+            && app_js.contains("COMPLETED_DB_KEY")
+            && app_js.contains("localStorage.getItem(COMPLETED_DB_KEY)")
+            && app_js.contains("localStorage.setItem(COMPLETED_DB_KEY")
+            && !app_js.contains("fetch('/api/scenarios')")
+            && !app_js.contains("fetch('/api/progress')")
+            && !app_js.contains("new WebSocket")
+            && html.contains("<script type=\"module\" src=\"/client/app.js\"></script>")
+            && app_js.contains("button.classList.toggle('upcoming', state.upcoming)")
             && app_js.contains("button.disabled = !state.enabled")
             && app_js.contains("Number(!a.state.completed) - Number(!b.state.completed)"),
-        "frontend should render server challenge state with disabled upcoming puzzles sorted below completed ones"
+        "frontend should use local wasm plus localStorage completion state and render disabled upcoming puzzles sorted below completed ones"
     );
     assert!(
         !app_js.contains("activateConsoleTab('result-tab')"),
@@ -1053,6 +1063,37 @@ fn frontend_console_groups_script_packets_result_and_events_as_tabs() {
             && style_css.contains(".syntax-section")
             && style_css.contains(".scenario.upcoming"),
         "tab dock and syntax reference should have dedicated layout styles"
+    );
+}
+
+#[test]
+fn wasm_api_exposes_scenarios_runner_and_challenge_state() {
+    let cargo_toml = include_str!("../Cargo.toml");
+    let lib_rs = include_str!("../src/lib.rs");
+    let wasm_api = include_str!("../src/wasm_api.rs");
+
+    assert!(
+        cargo_toml.contains("crate-type = [\"cdylib\", \"rlib\"]")
+            && cargo_toml.contains("[target.'cfg(target_arch = \"wasm32\")'.dependencies]")
+            && cargo_toml.contains("wasm-bindgen"),
+        "crate should be configured for wasm-bindgen cdylib builds"
+    );
+    assert!(
+        lib_rs.contains("#[cfg(target_arch = \"wasm32\")]")
+            && lib_rs.contains("mod wasm_api;")
+            && lib_rs.contains("pub fn scenario_summaries()")
+            && lib_rs.contains("pub fn challenge_state_message"),
+        "shared Rust game logic should be available to the wasm module"
+    );
+    assert!(
+        wasm_api.contains("#[wasm_bindgen]")
+            && wasm_api.contains("pub struct WasmGame")
+            && wasm_api.contains("pub fn scenarios_json()")
+            && wasm_api.contains("pub fn challenge_state_json")
+            && wasm_api.contains("pub fn run_script_json")
+            && wasm_api.contains("run_script(scenario_id, &script)")
+            && wasm_api.contains("scripts_by_scenario"),
+        "wasm API should expose local scenario loading, script execution, challenge state, and append-session state"
     );
 }
 
@@ -1101,6 +1142,12 @@ async fn api_scenarios_lists_all_documented_ids() {
     let expected = README_SCENARIO_IDS.into_iter().collect::<BTreeSet<_>>();
 
     assert_eq!(actual, expected);
+    assert!(
+        scenarios
+            .iter()
+            .all(|scenario| scenario["upcoming"] == false),
+        "all current scenarios should be unflagged as upcoming metadata"
+    );
 }
 
 #[tokio::test]
@@ -1587,8 +1634,9 @@ async fn websocket_streams_challenge_state_on_connect_and_after_completion() {
     assert!(initial_challenges.iter().any(|challenge| {
         challenge["id"] == "01-first-blood-batch"
             && challenge["completed"] == false
-            && challenge["enabled"] == false
-            && challenge["status"] == "upcoming"
+            && challenge["enabled"] == true
+            && challenge["upcoming"] == false
+            && challenge["status"] == "available"
     }));
 
     socket
@@ -1616,13 +1664,15 @@ async fn websocket_streams_challenge_state_on_connect_and_after_completion() {
         challenge["id"] == "01-first-blood-batch"
             && challenge["completed"] == true
             && challenge["enabled"] == true
+            && challenge["upcoming"] == false
             && challenge["status"] == "completed"
     }));
     assert!(updated_challenges.iter().any(|challenge| {
         challenge["id"] == "02-arena-fight-while-dead"
             && challenge["completed"] == false
-            && challenge["enabled"] == false
-            && challenge["status"] == "upcoming"
+            && challenge["enabled"] == true
+            && challenge["upcoming"] == false
+            && challenge["status"] == "available"
     }));
 
     server.abort();

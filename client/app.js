@@ -1,19 +1,30 @@
+import initWasm, { WasmGame } from './pkg/packet_hacker.js';
+
 let scenarios = [];
 let selected = null;
-let socket = null;
+let game = null;
 let renderer = null;
 let combat = null;
 let completed = new Set();
 let actionSessionStarted = false;
 let challengeStates = new Map();
-// Client-side mirrors of the server's authoritative market/mail state. They are
-// only ever refreshed from the scenario payload or from server notification
+const COMPLETED_DB_KEY = 'packet_hacker.completed.v1';
+// Client-side mirrors of the Rust engine's authoritative market/mail state. They are
+// only ever refreshed from the scenario payload or from engine notification
 // events in a run result -- never mutated speculatively by a click handler.
 let liveMarket = null;
 let liveMail = null;
 let liveInventory = null;
 
 const $ = (id) => document.getElementById(id);
+
+async function initGame() {
+  if (game) return game;
+  await initWasm();
+  game = new WasmGame();
+  $('connection').textContent = 'local wasm';
+  return game;
+}
 
 async function loadScenarios() {
   initConsoleTabs();
@@ -35,7 +46,7 @@ async function loadScenarios() {
   });
   renderer.onAction = (action) => {
     // Clicking a monster plays like a normal game: it sends the real attack
-    // packet to the server. The server's run result drives combat feedback.
+    // packet to the Rust engine. The run result drives combat feedback.
     const combatPacket = combat.packetForAction(action);
     if (combatPacket) {
       sendPacketScript(combatPacket);
@@ -52,13 +63,10 @@ async function loadScenarios() {
       $('scene-status').textContent = `blocked tile ${action.x}, ${action.y}: ${action.reason}`;
     }
   };
-  const [scenarioPayload, progress] = await Promise.all([
-    fetch('/api/scenarios').then((r) => r.json()),
-    loadProgress(),
-  ]);
-  scenarios = scenarioPayload;
+  const wasmGame = await initGame();
+  scenarios = JSON.parse(wasmGame.scenarios_json());
+  const progress = loadProgress();
   applyProgressCompleted(progress.completed || []);
-  ensureSocket();
 }
 
 function renderScenarioList() {
@@ -74,36 +82,85 @@ function renderScenarioList() {
     const button = document.createElement('button');
     button.className = 'scenario';
     button.classList.toggle('completed', state.completed);
-    button.classList.toggle('upcoming', !state.enabled);
+    button.classList.toggle('upcoming', state.upcoming);
     button.classList.toggle('active', selected?.id === scenario.id);
     button.disabled = !state.enabled;
     button.dataset.id = scenario.id;
-    const status = state.completed ? 'complete' : 'upcoming';
-    button.innerHTML = `<strong>${scenario.title}</strong><small>${scenario.category} · ${scenario.difficulty} · ${status}</small>`;
+    const flags = state.completed ? ['complete'] : state.upcoming ? ['upcoming'] : [];
+    const meta = [scenario.category, scenario.difficulty, ...flags].join(' · ');
+    button.innerHTML = `<strong>${scenario.title}</strong><small>${meta}</small>`;
     button.onclick = () => selectScenario(scenario);
     list.appendChild(button);
   }
 }
 
-async function loadProgress() {
-  const progress = await fetch('/api/progress').then((r) => r.json());
+function loadProgress() {
+  const progress = {
+    user_id: 'local',
+    completed: readCompletedDatabase(),
+  };
   applyProgressCompleted(progress.completed || []);
   return progress;
 }
 
 function applyProgressCompleted(completedIds) {
-  completed = new Set(completedIds || []);
+  completed = new Set(cleanCompletedIds(completedIds));
+  if (game) {
+    applyChallengeState(localChallengeState());
+    return;
+  }
   challengeStates = new Map(scenarios.map((scenario) => {
     const done = completed.has(scenario.id);
+    const upcoming = Boolean(scenario.upcoming);
     return [scenario.id, {
       id: scenario.id,
-      enabled: done,
+      enabled: done || !upcoming,
       completed: done,
-      status: done ? 'completed' : 'upcoming',
+      upcoming,
+      status: done ? 'completed' : upcoming ? 'upcoming' : 'available',
     }];
   }));
   renderScenarioList();
   reconcileSelectedScenario();
+}
+
+function readCompletedDatabase() {
+  try {
+    const raw = localStorage.getItem(COMPLETED_DB_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return cleanCompletedIds(Array.isArray(parsed) ? parsed : parsed.completed);
+  } catch (_) {
+    return [];
+  }
+}
+
+function writeCompletedDatabase(completedIds) {
+  try {
+    localStorage.setItem(COMPLETED_DB_KEY, JSON.stringify({
+      completed: cleanCompletedIds(completedIds),
+    }));
+  } catch (_) {
+    // Keep the in-memory Set usable when browser storage is unavailable.
+  }
+}
+
+function cleanCompletedIds(completedIds) {
+  return Array.from(new Set((completedIds || []).filter((id) => typeof id === 'string'))).sort();
+}
+
+function completedDatabaseJson() {
+  return JSON.stringify({ completed: Array.from(completed).sort() });
+}
+
+function localChallengeState() {
+  return JSON.parse(game.challenge_state_json(completedDatabaseJson()));
+}
+
+function recordCompleted(scenarioId) {
+  completed.add(scenarioId);
+  writeCompletedDatabase(Array.from(completed));
+  applyChallengeState(localChallengeState());
 }
 
 function applyChallengeState(message) {
@@ -118,11 +175,13 @@ function scenarioState(scenario) {
   const state = challengeStates.get(scenario.id);
   if (state) return state;
   const done = completed.has(scenario.id);
+  const upcoming = Boolean(scenario.upcoming);
   return {
     id: scenario.id,
-    enabled: done,
+    enabled: done || !upcoming,
     completed: done,
-    status: done ? 'completed' : 'upcoming',
+    upcoming,
+    status: done ? 'completed' : upcoming ? 'upcoming' : 'available',
   };
 }
 
@@ -174,7 +233,7 @@ function showNoEnabledScenario() {
   updateScenarioActiveState();
   $('scenario-title').textContent = 'No enabled challenges';
   $('scenario-meta').textContent = 'upcoming';
-  $('objective').textContent = 'Incomplete challenges are upcoming until the server enables them.';
+  $('objective').textContent = 'Challenges marked upcoming are not playable yet.';
   $('packets').textContent = '';
   $('script').value = '';
   $('script').disabled = true;
@@ -445,25 +504,6 @@ function activateConsoleTab(name) {
   });
 }
 
-function ensureSocket() {
-  if (socket && socket.readyState <= WebSocket.OPEN) return socket;
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  socket = new WebSocket(`${proto}//${location.host}/ws`);
-  socket.onopen = () => $('connection').textContent = 'connected';
-  socket.onclose = () => $('connection').textContent = 'disconnected';
-  socket.onerror = () => $('connection').textContent = 'socket error';
-  socket.onmessage = (event) => handleSocketMessage(JSON.parse(event.data));
-  return socket;
-}
-
-function handleSocketMessage(message) {
-  if (message.type === 'challenge_state') {
-    applyChallengeState(message);
-    return;
-  }
-  renderResult(message);
-}
-
 function runSelected() {
   if (!selected) return;
   sendScript($('script').value, 'running packets…', false);
@@ -476,23 +516,15 @@ function sendPacketScript(line) {
 }
 
 function sendScript(script, statusText, append = false) {
-  if (!selected) return;
+  if (!selected || !game) return;
   $('scene-status').textContent = statusText;
-  const ws = ensureSocket();
-  const send = () => ws.send(JSON.stringify({
-    type: 'run_script',
-    scenario_id: selected.id,
-    script,
-    append,
-  }));
-  if (ws.readyState === WebSocket.OPEN) send();
-  else ws.addEventListener('open', send, { once: true });
+  const result = JSON.parse(game.run_script_json(selected.id, script, append));
+  renderResult(result);
 }
 
 function renderResult(result) {
   if (result.outcome === 'win') {
-    completed.add(result.scenario_id);
-    applyProgressCompleted(Array.from(completed));
+    recordCompleted(result.scenario_id);
   }
 
   $('result').className = result.outcome;
@@ -618,6 +650,7 @@ function addInventoryItem(fields) {
 function resetExample() {
   if (!selected) return;
   actionSessionStarted = false;
+  if (game) game.reset_script_session(selected.id);
   $('script').value = selected.example_script || '';
   $('result').textContent = '';
   $('events').innerHTML = '';

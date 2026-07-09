@@ -1,9 +1,14 @@
 pub mod engine;
 pub mod protocol;
 pub mod scenarios;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod static_files;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod store;
+#[cfg(target_arch = "wasm32")]
+mod wasm_api;
 
+#[cfg(not(target_arch = "wasm32"))]
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -14,18 +19,64 @@ use axum::{
     routing::get,
     Json, Router,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use futures_util::{stream::SplitSink, SinkExt, StreamExt};
-use protocol::{ChallengeState, ChallengeStateMessage, ProgressResponse, RunScriptRequest};
-use std::collections::{HashMap, HashSet};
+use protocol::{ChallengeState, ChallengeStateMessage};
+#[cfg(not(target_arch = "wasm32"))]
+use protocol::{ProgressResponse, RunScriptRequest};
+#[cfg(not(target_arch = "wasm32"))]
+use std::collections::HashMap;
+use std::collections::HashSet;
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(not(target_arch = "wasm32"))]
+use tower_http::services::ServeDir;
 
 pub use engine::run_script;
 pub use protocol::{Outcome, RunResult};
 pub use scenarios::{all_scenarios, Scenario};
+#[cfg(not(target_arch = "wasm32"))]
 pub use store::Store;
 
+#[cfg(not(target_arch = "wasm32"))]
 static NEXT_USER_ID: AtomicU64 = AtomicU64::new(1);
 
+pub fn scenario_summaries() -> Vec<protocol::ScenarioSummary> {
+    all_scenarios()
+        .iter()
+        .map(|scenario| protocol::ScenarioSummary::from(*scenario))
+        .collect()
+}
+
+pub fn challenge_state_message(completed: &[String]) -> ChallengeStateMessage {
+    let completed = completed.iter().map(String::as_str).collect::<HashSet<_>>();
+    ChallengeStateMessage {
+        message_type: "challenge_state".to_string(),
+        challenges: all_scenarios()
+            .iter()
+            .map(|scenario| {
+                let done = completed.contains(scenario.id());
+                let upcoming = scenario.upcoming();
+                ChallengeState {
+                    id: scenario.id().to_string(),
+                    enabled: done || !upcoming,
+                    completed: done,
+                    upcoming,
+                    status: if done {
+                        "completed"
+                    } else if upcoming {
+                        "upcoming"
+                    } else {
+                        "available"
+                    }
+                    .to_string(),
+                }
+            })
+            .collect(),
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn app() -> Router {
     let path =
         std::env::var("PACKET_HACKER_DB").unwrap_or_else(|_| "packet_hacker.sqlite3".to_string());
@@ -33,6 +84,7 @@ pub fn app() -> Router {
     app_with_store(store)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn app_with_store(store: Store) -> Router {
     Router::new()
         .route("/", get(index))
@@ -41,27 +93,26 @@ pub fn app_with_store(store: Store) -> Router {
         .route("/client/scene.js", get(static_files::scene_js))
         .route("/client/combat.js", get(static_files::combat_js))
         .route("/client/icons/:name", get(static_files::icon))
+        .nest_service("/client/pkg", ServeDir::new("client/pkg"))
         .route("/api/scenarios", get(api_scenarios))
         .route("/api/progress", get(api_progress))
         .route("/ws", get(ws_handler))
         .with_state(store)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 async fn index(State(store): State<Store>, headers: HeaderMap) -> impl IntoResponse {
     let user_id = user_id_from_headers(&headers).unwrap_or_else(new_user_id);
     let _ = store.ensure_user(&user_id);
     ([cookie_header(&user_id)], static_files::index().await).into_response()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 async fn api_scenarios() -> Json<Vec<protocol::ScenarioSummary>> {
-    Json(
-        all_scenarios()
-            .iter()
-            .map(|scenario| protocol::ScenarioSummary::from(*scenario))
-            .collect(),
-    )
+    Json(scenario_summaries())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 async fn api_progress(State(store): State<Store>, headers: HeaderMap) -> impl IntoResponse {
     let user_id = user_id_from_headers(&headers).unwrap_or_else(new_user_id);
     match store
@@ -82,6 +133,7 @@ async fn api_progress(State(store): State<Store>, headers: HeaderMap) -> impl In
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 async fn ws_handler(
     State(store): State<Store>,
     headers: HeaderMap,
@@ -92,6 +144,7 @@ async fn ws_handler(
     ws.on_upgrade(move |socket| handle_socket(socket, store, user_id))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 async fn handle_socket(socket: WebSocket, store: Store, user_id: String) {
     let (mut sender, mut receiver) = socket.split();
     let mut scripts_by_scenario = HashMap::<String, String>::new();
@@ -141,6 +194,7 @@ async fn handle_socket(socket: WebSocket, store: Store, user_id: String) {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 async fn send_challenge_state(
     sender: &mut SplitSink<WebSocket, Message>,
     store: &Store,
@@ -156,25 +210,7 @@ async fn send_challenge_state(
     sender.send(Message::Text(text)).await.is_ok()
 }
 
-fn challenge_state_message(completed: &[String]) -> ChallengeStateMessage {
-    let completed = completed.iter().map(String::as_str).collect::<HashSet<_>>();
-    ChallengeStateMessage {
-        message_type: "challenge_state".to_string(),
-        challenges: all_scenarios()
-            .iter()
-            .map(|scenario| {
-                let done = completed.contains(scenario.id());
-                ChallengeState {
-                    id: scenario.id().to_string(),
-                    enabled: done,
-                    completed: done,
-                    status: if done { "completed" } else { "upcoming" }.to_string(),
-                }
-            })
-            .collect(),
-    }
-}
-
+#[cfg(not(target_arch = "wasm32"))]
 fn user_id_from_headers(headers: &HeaderMap) -> Option<String> {
     let cookie = headers.get(header::COOKIE)?.to_str().ok()?;
     cookie.split(';').find_map(|part| {
@@ -187,6 +223,7 @@ fn user_id_from_headers(headers: &HeaderMap) -> Option<String> {
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn valid_user_id(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 64
@@ -195,6 +232,7 @@ fn valid_user_id(value: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn new_user_id() -> String {
     let counter = NEXT_USER_ID.fetch_add(1, Ordering::Relaxed);
     let nanos = std::time::SystemTime::now()
@@ -204,6 +242,7 @@ fn new_user_id() -> String {
     format!("u{nanos:x}{counter:x}")
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn cookie_header(user_id: &str) -> (header::HeaderName, HeaderValue) {
     (
         header::SET_COOKIE,
