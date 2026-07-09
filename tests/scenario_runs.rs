@@ -1082,6 +1082,8 @@ fn frontend_console_groups_script_packets_result_and_events_as_tabs() {
             && !app_js.contains("fetch('/api/progress')")
             && !app_js.contains("new WebSocket")
             && html.contains("<script type=\"module\" src=\"/client/app.js\"></script>")
+            && html.contains("href=\"https://github.com/xenomorphtech/h4ck_my_game\"")
+            && html.contains(">GitHub</a>")
             && app_js.contains("button.classList.toggle('upcoming', state.upcoming)")
             && app_js.contains("button.disabled = !state.enabled")
             && app_js.contains("Number(a.state.upcoming) - Number(b.state.upcoming)")
@@ -1098,8 +1100,10 @@ fn frontend_console_groups_script_packets_result_and_events_as_tabs() {
             && style_css.contains(".console-pane")
             && style_css.contains(".syntax-scroll")
             && style_css.contains(".syntax-section")
-            && style_css.contains(".scenario.upcoming"),
-        "tab dock and syntax reference should have dedicated layout styles"
+            && style_css.contains(".scenario.upcoming")
+            && style_css.contains("cursor: pointer;")
+            && !style_css.contains("cursor: not-allowed;"),
+        "tab dock, repo link, syntax reference, and enabled upcoming cards should have dedicated layout styles"
     );
 }
 
